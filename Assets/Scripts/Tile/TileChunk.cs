@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using OptIn.Util;
 using SimplexNoise;
 using UnityEngine;
@@ -12,12 +13,13 @@ namespace OptIn.Tile
         TileLight[] lights;
         Vector2Int chunkPosition;
         Vector2Int chunkSize;
-        bool dirty;
+        bool meshDirty;
+        bool lightDirty;
 
         TileMesh mesh;
         TileLightTexture lightTexture;
 
-        public bool Dirty => dirty;
+        public bool Dirty => meshDirty || lightDirty;
         public Vector2Int ChunkPosition => chunkPosition;
 
         void Awake()
@@ -39,33 +41,46 @@ namespace OptIn.Tile
             lightTexturePosition.z -= 10;
             lightTexture.transform.position = lightTexturePosition;
             
-            dirty = true;
+            meshDirty = true;
+            lightDirty = true;
         }
 
         public void UpdateChunk()
         {
             UpdateMesh();
             UpdateLightTexture();
-            dirty = false;
         }
 
         void UpdateMesh()
         {
+            if (!meshDirty)
+                return;
+            
             mesh.UpdateMesh(tiles);
+            meshDirty = false;
         }
 
         void UpdateLightTexture()
         {
+            if(!lightDirty)
+                return;
+            
             lightTexture.UpdateTexture(lights);
+            lightDirty = false;
         }
-
+        
         public void SetSunLight(Vector2Int tilePosition, int value)
         {
             if (!TileUtil.BoundaryCheck(tilePosition, chunkSize))
                 return;
 
-            lights[TileUtil.To1DIndex(tilePosition, chunkSize)].SetSunLight(value);
-            dirty = true;
+            int index = TileUtil.To1DIndex(tilePosition, chunkSize);
+
+            if (lights[index].GetSunLight() == value)
+                return;
+
+            lights[index].SetSunLight(value);
+            lightDirty = true;
         }
         
         public int GetSunLight(Vector2Int tilePosition)
@@ -76,13 +91,20 @@ namespace OptIn.Tile
             return lights[TileUtil.To1DIndex(tilePosition, chunkSize)].GetSunLight();
         }
 
-        public void SetTile(Vector2Int tilePosition, int type)
+        public bool SetTile(Vector2Int tilePosition, int type)
         {
             if (!TileUtil.BoundaryCheck(tilePosition, chunkSize))
-                return;
+                return false;
 
-            tiles[TileUtil.To1DIndex(tilePosition, chunkSize)].type = type;
-            dirty = true;
+            int index = TileUtil.To1DIndex(tilePosition, chunkSize);
+
+            if (tiles[index].type == type)
+                return false;
+            
+            tiles[index].type = type;
+            meshDirty = true;
+
+            return true;
         }
         
         public bool GetTile(Vector2Int tilePosition, out Tile tile)

@@ -36,30 +36,14 @@ namespace OptIn.Util
                 y = Mathf.FloorToInt(worldTilePosition.y / (float)size.y)
             };
         }
-
-        public static bool IsEdgeTile(Tile.Tile[] tiles, Vector2Int tilePosition, Vector2Int size)
+        
+        public static Vector2Int WorldToWorldtile(Vector3 worldPosition)
         {
-            bool isEdge = false;
-            foreach (var direction in Direction4)
+            return new Vector2Int
             {
-                Vector2Int neighborPosition = tilePosition + direction;
-                if (BoundaryCheck(neighborPosition, size))
-                {
-                    int index = To1DIndex(neighborPosition, size);
-                    if (tiles[index].type == 0)
-                    {
-                        isEdge = true;
-                        break;
-                    }
-                }
-                else
-                {
-                    isEdge = true;
-                    break;
-                }
-            }
-
-            return isEdge;
+                x = Mathf.FloorToInt(worldPosition.x),
+                y = Mathf.FloorToInt(worldPosition.y)
+            };
         }
 
         public static Vector2Int WorldTileToTile(Vector2Int worldTilePosition, Vector2Int chunkPosition, Vector2Int size)
@@ -77,8 +61,19 @@ namespace OptIn.Util
             new Vector2Int(0, -1),
             new Vector2Int(0, 1),
             new Vector2Int(1, 0),
-            new Vector2Int(-1, 0),
+            new Vector2Int(-1, 0)
         };
-
+        
+        public static readonly Vector2Int[] Direction8 =
+        {
+            new Vector2Int(1, 0),
+            new Vector2Int(-1, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(0, -1),
+            new Vector2Int(1, 1),
+            new Vector2Int(-1, -1),
+            new Vector2Int(-1, 1),
+            new Vector2Int(1, -1)
+        };
     }
 }

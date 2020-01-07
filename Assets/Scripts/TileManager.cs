@@ -20,8 +20,6 @@ public class TileManager : MonoBehaviour
     {
         GenerateTerrain();
         BuildSunLight();
-        
-        
     }
 
     void GenerateTerrain()
@@ -50,7 +48,6 @@ public class TileManager : MonoBehaviour
     void BuildSunLight()
     {
         Queue<Vector2Int> sunLightQueue = new Queue<Vector2Int>();
-        HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
         
         for (int x = 0; x < mapSize.x; x++)
         {
@@ -78,8 +75,6 @@ public class TileManager : MonoBehaviour
             if(sunLight <= 0)
                 continue;
             
-            visited.Add(lightPosition);
-        
             foreach (Vector2Int direction in TileUtil.Direction4)
             {
 
@@ -97,16 +92,12 @@ public class TileManager : MonoBehaviour
                 if (isOpacity)
                     resultSunLight -= 2;
 
-
-                if(neighborSunLight >= resultSunLight)
-                    continue;
-                
                 if (direction == Vector2Int.down && !isOpacity && sunLight == TileLight.MaxSunLight)
                 {
                     SetSunLight(neighborPosition, TileLight.MaxSunLight);
                     sunLightQueue.Enqueue(neighborPosition);
                 }
-                else
+                else if(neighborSunLight < resultSunLight)
                 {
                     SetSunLight(neighborPosition, resultSunLight);
                     sunLightQueue.Enqueue(neighborPosition);
@@ -118,6 +109,18 @@ public class TileManager : MonoBehaviour
     void Update()
     {
         UpdateChunks();
+
+        Vector3 mousePosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        Vector2Int worldTilePosition = TileUtil.WorldToWorldtile(mousePosition);
+        if (Input.GetMouseButton(0))
+        {
+            SetTile(worldTilePosition, 1);
+        }
+        else if (Input.GetMouseButton(1))
+        {
+            SetTile(worldTilePosition, 0);   
+        }
+        
     }
 
     void UpdateChunks()
@@ -133,6 +136,100 @@ public class TileManager : MonoBehaviour
             
             pair.Value.UpdateChunk();
             numChunk++;
+        }
+    }
+
+    public void SunLightPropagation(Vector2Int worldTilePosition, int type)
+    {
+        Queue<Vector2Int> sunLightPropagationQueue = new Queue<Vector2Int>();
+        Queue<Tuple<Vector2Int, int>> sunLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
+
+        if (type == 0)
+        {
+            foreach (Vector2Int direction in TileUtil.Direction4)
+            {
+                Vector2Int neighborPosition = worldTilePosition + direction;
+
+                if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
+                    continue;
+
+                int neighborSunLight = GetSunLight(neighborPosition);
+
+                if (neighborSunLight <= 0)
+                    continue;
+
+                sunLightPropagationQueue.Enqueue(neighborPosition);
+            }
+        }
+        else
+        {
+            int sunLight = GetSunLight(worldTilePosition);
+            SetSunLight(worldTilePosition, 0);
+            sunLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, sunLight));
+        }
+
+
+        while (sunLightRemovalQueue.Count != 0)
+        {
+            (Vector2Int lightPosition, int sunLight) = sunLightRemovalQueue.Dequeue();
+
+            foreach (Vector2Int direction in TileUtil.Direction4)
+            {
+                Vector2Int neighborPosition = lightPosition + direction;
+
+                if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
+                    continue;
+
+                int neighborSunLight = GetSunLight(neighborPosition);
+
+                if (neighborSunLight != 0 && neighborSunLight < sunLight || direction == Vector2Int.down && sunLight == TileLight.MaxSunLight)
+                {
+                    SetSunLight(neighborPosition, 0);
+                    sunLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(neighborPosition, neighborSunLight));
+                }
+                else if (neighborSunLight >= sunLight)
+                {
+                    sunLightPropagationQueue.Enqueue(neighborPosition);
+                }
+            }
+        }
+
+        while (sunLightPropagationQueue.Count != 0)
+        {
+            Vector2Int lightPosition = sunLightPropagationQueue.Dequeue();
+            int sunLight = GetSunLight(lightPosition);
+
+            if (sunLight <= 0)
+                continue;
+
+            foreach (Vector2Int direction in TileUtil.Direction4)
+            {
+                Vector2Int neighborPosition = lightPosition + direction;
+
+                if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
+                    continue;
+
+                int neighborSunLight = GetSunLight(neighborPosition);
+
+                int resultSunLight = sunLight - 1;
+
+                bool isOpacity = GetTile(neighborPosition, out Tile neighborTile) && neighborTile.type != 0;
+
+                if (isOpacity)
+                    resultSunLight -= 2;
+
+                if (direction == Vector2Int.down && !isOpacity && sunLight == TileLight.MaxSunLight)
+                {
+                    SetSunLight(neighborPosition, TileLight.MaxSunLight);
+                    sunLightPropagationQueue.Enqueue(neighborPosition);
+                }
+                else if(neighborSunLight < resultSunLight)
+                {
+                    SetSunLight(neighborPosition, resultSunLight);
+                    sunLightPropagationQueue.Enqueue(neighborPosition);
+                }
+            }
+
         }
     }
 
@@ -177,12 +274,18 @@ public class TileManager : MonoBehaviour
         
         if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
         {
-            chunk.SetTile(tilePosition, type);
+            if (chunk.SetTile(tilePosition, type))
+            {
+                SunLightPropagation(worldTilePosition, type);
+            }
         }
         else if(TileUtil.BoundaryCheck(worldTilePosition, mapSize))
         {
             TileChunk newChunk = GenerateChunk(chunkPosition);
-            newChunk.SetTile(tilePosition, type);
+            if (newChunk.SetTile(tilePosition, type))
+            {
+                SunLightPropagation(worldTilePosition, type);
+            }
         }
     }
 

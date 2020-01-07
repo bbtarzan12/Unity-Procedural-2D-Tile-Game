@@ -40,7 +40,8 @@ namespace OptIn.Tile
         public void UpdateMesh(Tile[] tiles)
         {
             GenerateMesh(tiles);
-
+            
+            mesh.Clear();
             mesh.SetVertices(vertices);
             mesh.SetColors(colors);
             mesh.SetIndices(indices, MeshTopology.Triangles, 0);
@@ -61,7 +62,7 @@ namespace OptIn.Tile
             colors.Clear();
             paths.Clear();;
 
-            int numTiles = 0;
+            int numQuads = 0;
 
             HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
             for (int x = 0; x < chunkSize.x; x++)
@@ -139,7 +140,10 @@ namespace OptIn.Tile
 
                         for (int dy = 0; dy < height; dy++)
                         {
-                            Vector2Int nextPosition = tilePosition + Vector2Int.up * dy + Vector2Int.right * width;
+                            Vector2Int nextPosition = 
+                                tilePosition + 
+                                Vector2Int.up * dy + 
+                                Vector2Int.right * width;
                             visited.Add(nextPosition);
                         }
                     }
@@ -162,11 +166,11 @@ namespace OptIn.Tile
 
                     for (int i = 0; i < 6; i++)
                     {
-                        indices.Add(tileIndices[i] + numTiles * 4);
+                        indices.Add(tileIndices[i] + numQuads * 4);
                     }
 
                     y += height;
-                    numTiles++;
+                    numQuads++;
                 }
             }
         }
