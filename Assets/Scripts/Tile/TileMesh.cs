@@ -29,6 +29,7 @@ namespace OptIn.Tile
             filter = GetComponent<MeshFilter>();
             polygonCollider = GetComponent<PolygonCollider2D>();
             meshRenderer = GetComponent<MeshRenderer>();
+            gameObject.layer = LayerMask.NameToLayer("Terrain");
         }
 
         public void Init(Vector2Int size, Material tileMaterial)

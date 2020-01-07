@@ -20,6 +20,7 @@ namespace OptIn.Tile
             mesh = new Mesh();
             filter = GetComponent<MeshFilter>();
             meshRenderer = GetComponent<MeshRenderer>();
+            gameObject.layer = LayerMask.NameToLayer("Light");
         }
 
         public void Init(Vector2Int size, Material lightMaterial)
@@ -51,11 +52,10 @@ namespace OptIn.Tile
                 for (int y = 0; y < chunkSize.y; y++)
                 {
                     Vector2Int lightPosition = new Vector2Int(x, y);
+
                     int index = TileUtil.To1DIndex(lightPosition, chunkSize);
 
-                    ref TileLight light = ref lights[index];
-
-                    int sunLight = light.GetSunLight();
+                    int sunLight = lights[index].GetSunLight();
 
                     byte lightIntensity = (byte)((TileLight.MaxSunLight - sunLight) * 17);
 
