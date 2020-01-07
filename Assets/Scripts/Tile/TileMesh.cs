@@ -33,7 +33,7 @@ namespace OptIn.Tile
 
         public void Init(Vector2Int size, Material tileMaterial)
         {
-            meshRenderer.material = tileMaterial;
+            meshRenderer.sharedMaterial = tileMaterial;
             chunkSize = size;
         }
 
