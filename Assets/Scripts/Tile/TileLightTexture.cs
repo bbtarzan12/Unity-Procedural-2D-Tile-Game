@@ -56,8 +56,9 @@ namespace OptIn.Tile
                     int index = TileUtil.To1DIndex(lightPosition, chunkSize);
 
                     int sunLight = lights[index].GetSunLight();
+                    int torchLight = lights[index].GetTorchLight();
 
-                    byte lightIntensity = (byte)((TileLight.MaxSunLight - sunLight) * 17);
+                    byte lightIntensity = (byte)((TileLight.MaxSunLight - Mathf.Max(sunLight, torchLight)) * 17);
 
                     Color32 color = new Color32(0, 0, 0, lightIntensity); 
                     texture.SetPixel(x, y, color);

@@ -21,8 +21,10 @@ namespace OptIn.Tile
         List<Vector3> vertices = new List<Vector3>();
         List<int> indices = new List<int>();
         List<Vector4> uvs = new List<Vector4>();
-        List<Color> colors = new List<Color>();
+        List<Color32> colors = new List<Color32>();
+        HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
 
+        
         void Awake()
         {
             mesh = new Mesh();
@@ -62,10 +64,10 @@ namespace OptIn.Tile
             uvs.Clear();
             colors.Clear();
             paths.Clear();;
+            visited.Clear();
 
             int numQuads = 0;
 
-            HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
             for (int x = 0; x < chunkSize.x; x++)
             {
                 for (int y = 0; y < chunkSize.y;)
@@ -74,7 +76,7 @@ namespace OptIn.Tile
                     int index = TileUtil.To1DIndex(tilePosition, chunkSize);
                     ref Tile tile = ref tiles[index];
 
-                    if (tile.type == 0)
+                    if (tile.id == 0)
                     {
                         y++;
                         continue;
@@ -100,7 +102,7 @@ namespace OptIn.Tile
 
                         ref Tile nextTile = ref tiles[nextIndex];
 
-                        if (nextTile.type != tile.type)
+                        if (nextTile.id != tile.id)
                             break;
                         
                         if (visited.Contains(nextPosition))
@@ -127,7 +129,7 @@ namespace OptIn.Tile
                             
                             ref Tile nextTile = ref tiles[nextIndex];
 
-                            if (nextTile.type != tile.type || visited.Contains(nextPosition))
+                            if (nextTile.id != tile.id || visited.Contains(nextPosition))
                             {
                                 done = true;
                                 break;
@@ -157,7 +159,7 @@ namespace OptIn.Tile
                         Vector3 vertex = tileVertices[i] * scale + tilePosition;
                         vertices.Add(vertex);
                         uvs.Add(tileVertices[i] * scale);
-                        colors.Add(Color.white);
+                        colors.Add(tile.color);
                         
                         // Not Optimized Collider Generation
                         Vector2 point = colliderPoints[i] * scale + tilePosition;

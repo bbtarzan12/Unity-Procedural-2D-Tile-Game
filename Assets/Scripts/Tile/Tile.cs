@@ -1,9 +1,13 @@
+using UnityEngine;
+
 namespace OptIn.Tile
 {
     public struct Tile
     {
-        public int type;
+        public int id;
+        public int emission;
+        public Color32 color;
         
-        public static readonly Tile Empty = new Tile{type = 0};
+        public static readonly Tile Empty = new Tile{id = 0};
     }
 }

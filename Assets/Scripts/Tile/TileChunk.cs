@@ -68,6 +68,28 @@ namespace OptIn.Tile
             lightTexture.UpdateTexture(lights);
             lightDirty = false;
         }
+
+        public void SetTorchLight(Vector2Int tilePosition, int value)
+        {
+            if (!TileUtil.BoundaryCheck(tilePosition, chunkSize))
+                return;
+
+            int index = TileUtil.To1DIndex(tilePosition, chunkSize);
+
+            if (lights[index].GetTorchLight() == value)
+                return;
+
+            lights[index].SetTorchLight(value);
+            lightDirty = true;
+        }
+
+        public int GetTorchLight(Vector2Int tilePosition)
+        {
+            if (!TileUtil.BoundaryCheck(tilePosition, chunkSize))
+                return 0;
+
+            return lights[TileUtil.To1DIndex(tilePosition, chunkSize)].GetTorchLight();
+        }
         
         public void SetSunLight(Vector2Int tilePosition, int value)
         {
@@ -91,17 +113,19 @@ namespace OptIn.Tile
             return lights[TileUtil.To1DIndex(tilePosition, chunkSize)].GetSunLight();
         }
 
-        public bool SetTile(Vector2Int tilePosition, int type)
+        public bool SetTile(Vector2Int tilePosition, Tile tile)
         {
             if (!TileUtil.BoundaryCheck(tilePosition, chunkSize))
                 return false;
 
             int index = TileUtil.To1DIndex(tilePosition, chunkSize);
 
-            if (tiles[index].type == type)
+            if (tiles[index].id == tile.id)
                 return false;
             
-            tiles[index].type = type;
+            SetTorchLight(tilePosition, tile.emission);
+            
+            tiles[index] = tile;
             meshDirty = true;
 
             return true;
@@ -111,7 +135,6 @@ namespace OptIn.Tile
         {
             if (!TileUtil.BoundaryCheck(tilePosition, chunkSize))
             {
-                Debug.Log($"{tilePosition}");
                 tile = Tile.Empty;
                 return false;
             }
