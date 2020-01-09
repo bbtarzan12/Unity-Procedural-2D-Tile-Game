@@ -55,9 +55,9 @@ namespace OptIn.Tile
                     int torchGreenLight = lights[index].GetGreenLight();
                     int torchBlueLight = lights[index].GetBlueLight();
                     
-                    byte redIntensity = (byte) (Mathf.Max(torchRedLight, sunLight) * 17);
-                    byte greenIntensity = (byte) (Mathf.Max(torchGreenLight, sunLight) * 17);
-                    byte blueIntensity = (byte) (Mathf.Max(torchBlueLight, sunLight) * 17);
+                    byte redIntensity = (byte) Mathf.Max(torchRedLight, sunLight);
+                    byte greenIntensity = (byte) Mathf.Max(torchGreenLight, sunLight);
+                    byte blueIntensity = (byte) Mathf.Max(torchBlueLight, sunLight);
 
                     Color32 color = new Color32(redIntensity, greenIntensity, blueIntensity, 255);
                     texture.SetPixel(x, y, color);

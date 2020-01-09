@@ -30,8 +30,8 @@ public class TileManager : MonoBehaviour
     static readonly Tile[] tiles =
     {
         Tile.Empty,
-        new Tile{id = 1, color = new Color32(139, 192, 157, 255)},
-        new Tile{id = 2, color = new Color32(255, 242, 161, 255), emission = new LightEmission{r = 15, g = 15, b = 0}}, 
+        new Tile{id = 1, color = new Color32(139, 192, 157, 255), attenuation = 50},
+        new Tile{id = 2, color = new Color32(255, 242, 161, 255), emission = new LightEmission{r = TileLight.MaxTorchLight, g = TileLight.MaxTorchLight, b = 0}}, 
     };
 
     void Start()
@@ -202,12 +202,12 @@ public class TileManager : MonoBehaviour
 
                 int neighborSunLight = GetLight(neighborPosition, LightType.S);
 
-                int resultSunLight = sunLight - 1;
+                int resultSunLight = sunLight - TileLight.SunLightAttenuation;
 
                 bool isOpacity = GetTile(neighborPosition, out Tile neighborTile) && neighborTile.id != 0;
 
                 if (isOpacity)
-                    resultSunLight -= 2;
+                    resultSunLight -= neighborTile.attenuation;
 
                 if (direction == Vector2Int.down && !isOpacity && sunLight == TileLight.MaxSunLight)
                 {
@@ -268,12 +268,12 @@ public class TileManager : MonoBehaviour
 
                 int neighborTorchLight = GetLight(neighborPosition, lightType);
 
-                int resultTorchLight = torchLight - 1;
+                int resultTorchLight = torchLight - TileLight.SunLightAttenuation;
 
                 bool isOpacity = GetTile(neighborPosition, out Tile neighborTile) && neighborTile.id != 0;
 
                 if (isOpacity)
-                    resultTorchLight -= 2;
+                    resultTorchLight -= neighborTile.attenuation;
 
                 if (neighborTorchLight >= resultTorchLight)
                     continue;

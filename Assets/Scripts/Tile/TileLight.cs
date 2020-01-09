@@ -13,12 +13,14 @@ namespace OptIn.Tile
     
     public struct TileLight
     {
-        public static readonly int MaxSunLight = 15;
-        public static readonly int MaxTorchLight = 15;
-        
-        short light; // SSSS RRRR GGGG BBBB, S : SunLight
-        
-        public int GetLight(LightType type)
+        public const byte MaxSunLight = 255;
+        public const byte MaxTorchLight = 255;
+        public const int SunLightAttenuation = 10;
+
+        byte sunLight;
+        LightEmission emission;
+                
+        public byte GetLight(LightType type)
         {
             switch (type)
             {
@@ -32,66 +34,68 @@ namespace OptIn.Tile
         
         public void SetLight(int value, LightType type)
         {
+            if (value < 0)
+                value = 0;
             switch (type)
             {
                 case LightType.S: 
-                    SetSunLight(value);
+                    SetSunLight((byte) value);
                     break;
                 case LightType.R:
-                    SetRedLight(value);
+                    SetRedLight((byte) value);
                     break;
                 case LightType.G:
-                    SetGreenLight(value);
+                    SetGreenLight((byte) value);
                     break;
                 case LightType.B:
-                    SetBlueLight(value);
+                    SetBlueLight((byte) value);
                     break;
             }
         }
 
         public LightEmission GetEmission()
         {
-            return new LightEmission{r = (byte)GetRedLight(), g = (byte)GetGreenLight(), b = (byte)GetBlueLight()};
+            return new LightEmission{r = GetRedLight(), g = GetGreenLight(), b = GetBlueLight()};
         }
 
-        public int GetSunLight()
+        public byte GetSunLight()
         {
-            return (light >> 12) & 0xF;
+            return sunLight;
         }
 
-        public void SetSunLight(int value)
+        public void SetSunLight(byte value)
         {
-            light = (short)((light & 0x0FFF) | (value << 12));
+            sunLight = value;
         }
         
-        public int GetRedLight()
+        public byte GetRedLight()
         {
-            return (light >> 8) & 0xF;
+            return emission.r;
         }
 
-        public void SetRedLight(int value)
+        public void SetRedLight(byte value)
         {
-            light = (short) ((light & 0xF0FF) | (value << 8));
+            emission.r = value;
         }
 
-        public int GetGreenLight()
+        public byte GetGreenLight()
         {
-            return (light >> 4) & 0xF;
+            return emission.g;
         }
 
-        public void SetGreenLight(int value)
+        public void SetGreenLight(byte value)
         {
-            light = (short) ((light & 0xFF0F) | (value << 4));
+            emission.g = value;
         }
 
-        public int GetBlueLight()
+        public byte GetBlueLight()
         {
-            return light & 0xF;
+            return emission.b;
         }
 
-        public void SetBlueLight(int value)
+        public void SetBlueLight(byte value)
         {
-            light = (short) ((light & 0xFFF0) | value);
+            emission.b = value;
         }
     }
 }
