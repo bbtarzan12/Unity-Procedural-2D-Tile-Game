@@ -5,6 +5,7 @@ using OptIn.Tile;
 using OptIn.Util;
 using SimplexNoise;
 using UnityEngine;
+using LightType = OptIn.Tile.LightType;
 
 public class TileManager : MonoBehaviour
 {
@@ -18,14 +19,19 @@ public class TileManager : MonoBehaviour
     Queue<Vector2Int> sunLightPropagationQueue = new Queue<Vector2Int>();
     Queue<Tuple<Vector2Int, int>> sunLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
 
-    Queue<Vector2Int> torchLightPropagationQueue = new Queue<Vector2Int>();
-    Queue<Tuple<Vector2Int, int>> torchLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
+    Queue<Vector2Int> torchRedLightPropagationQueue = new Queue<Vector2Int>();
+    Queue<Vector2Int> torchGreenLightPropagationQueue = new Queue<Vector2Int>();
+    Queue<Vector2Int> torchBlueLightPropagationQueue = new Queue<Vector2Int>();
+
+    Queue<Tuple<Vector2Int, int>> torchRedLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
+    Queue<Tuple<Vector2Int, int>> torchGreenLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
+    Queue<Tuple<Vector2Int, int>> torchBlueLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
 
     static readonly Tile[] tiles =
     {
         Tile.Empty,
         new Tile{id = 1, color = new Color32(139, 192, 157, 255)},
-        new Tile{id = 2, color = new Color32(255, 242, 161, 255), emission = 12}, 
+        new Tile{id = 2, color = new Color32(255, 242, 161, 255), emission = new LightEmission{r = 15, g = 15, b = 0}}, 
     };
 
     void Start()
@@ -62,7 +68,7 @@ public class TileManager : MonoBehaviour
         for (int x = 0; x < mapSize.x; x++)
         {
             Vector2Int worldTilePosition = new Vector2Int(x, mapSize.y - 1);
-            SetSunLight(worldTilePosition, TileLight.MaxSunLight);
+            SetLight(worldTilePosition, TileLight.MaxSunLight, LightType.S);
             sunLightPropagationQueue.Enqueue(worldTilePosition);
         }
     }
@@ -71,7 +77,9 @@ public class TileManager : MonoBehaviour
     {
         UpdateChunks();
         SunLightPropagation();
-        TorchLightPropagation();
+        TorchLightPropagation(ref torchRedLightPropagationQueue, ref torchRedLightRemovalQueue, LightType.R);
+        TorchLightPropagation(ref torchGreenLightPropagationQueue, ref torchGreenLightRemovalQueue, LightType.G);
+        TorchLightPropagation(ref torchBlueLightPropagationQueue, ref torchBlueLightRemovalQueue, LightType.B);
 
         Vector3 mousePosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         Vector2Int worldTilePosition = TileUtil.WorldToWorldtile(mousePosition);
@@ -106,7 +114,7 @@ public class TileManager : MonoBehaviour
         }
     }
 
-    void CheckTileToUpdateLight(Vector2Int worldTilePosition, Tile tile, Tile beforeTile)
+    void CheckTileToUpdateLight(Vector2Int worldTilePosition, Tile tile, LightEmission beforeEmission)
     {
         if (tile.id == 0)
         {
@@ -117,23 +125,37 @@ public class TileManager : MonoBehaviour
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
 
-                int neighborSunLight = GetSunLight(neighborPosition);
+                int neighborSunLight = GetLight(neighborPosition, LightType.S);
 
                 if (neighborSunLight > 0)
                     sunLightPropagationQueue.Enqueue(neighborPosition);
             }
-            
-            torchLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, beforeTile.emission));
         }
         else
         {
-            int sunLight = GetSunLight(worldTilePosition);
-            SetSunLight(worldTilePosition, 0);
+            int sunLight = GetLight(worldTilePosition, LightType.S);
+            SetLight(worldTilePosition, 0, LightType.S);
             sunLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, sunLight));
-
-            if(tile.emission > 0)
-                torchLightPropagationQueue.Enqueue(worldTilePosition);
         }
+        
+        if (tile.emission.r > 0)
+            torchRedLightPropagationQueue.Enqueue(worldTilePosition);
+
+        if (tile.emission.g > 0)
+            torchGreenLightPropagationQueue.Enqueue(worldTilePosition);
+
+        if (tile.emission.b > 0)
+            torchBlueLightPropagationQueue.Enqueue(worldTilePosition);
+
+        if (beforeEmission.r > 0) 
+            torchRedLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, beforeEmission.r));
+
+        if(beforeEmission.g > 0)
+            torchGreenLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, beforeEmission.g));
+            
+        if(beforeEmission.b > 0)
+            torchBlueLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, beforeEmission.b));
+        
     }
 
     public void SunLightPropagation()
@@ -149,11 +171,11 @@ public class TileManager : MonoBehaviour
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
 
-                int neighborSunLight = GetSunLight(neighborPosition);
+                int neighborSunLight = GetLight(neighborPosition, LightType.S);
 
                 if (neighborSunLight != 0 && neighborSunLight < sunLight || direction == Vector2Int.down && sunLight == TileLight.MaxSunLight)
                 {
-                    SetSunLight(neighborPosition, 0);
+                    SetLight(neighborPosition, 0, LightType.S);
                     sunLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(neighborPosition, neighborSunLight));
                 }
                 else if (neighborSunLight >= sunLight)
@@ -166,7 +188,7 @@ public class TileManager : MonoBehaviour
         while (sunLightPropagationQueue.Count != 0)
         {
             Vector2Int lightPosition = sunLightPropagationQueue.Dequeue();
-            int sunLight = GetSunLight(lightPosition);
+            int sunLight = GetLight(lightPosition, LightType.S);
 
             if (sunLight <= 0)
                 continue;
@@ -178,7 +200,7 @@ public class TileManager : MonoBehaviour
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
 
-                int neighborSunLight = GetSunLight(neighborPosition);
+                int neighborSunLight = GetLight(neighborPosition, LightType.S);
 
                 int resultSunLight = sunLight - 1;
 
@@ -189,12 +211,12 @@ public class TileManager : MonoBehaviour
 
                 if (direction == Vector2Int.down && !isOpacity && sunLight == TileLight.MaxSunLight)
                 {
-                    SetSunLight(neighborPosition, TileLight.MaxSunLight);
+                    SetLight(neighborPosition, TileLight.MaxSunLight, LightType.S);
                     sunLightPropagationQueue.Enqueue(neighborPosition);
                 }
                 else if(neighborSunLight < resultSunLight)
                 {
-                    SetSunLight(neighborPosition, resultSunLight);
+                    SetLight(neighborPosition, resultSunLight, LightType.S);
                     sunLightPropagationQueue.Enqueue(neighborPosition);
                 }
             }
@@ -202,11 +224,11 @@ public class TileManager : MonoBehaviour
         }
     }
 
-    public void TorchLightPropagation()
+    public void TorchLightPropagation(ref Queue<Vector2Int> propagationQueue, ref Queue<Tuple<Vector2Int, int>> removalQueue, LightType lightType)
     {
-        while (torchLightRemovalQueue.Count != 0)
+        while (removalQueue.Count != 0)
         {
-            (Vector2Int lightPosition, int torchLight) = torchLightRemovalQueue.Dequeue();
+            (Vector2Int lightPosition, int torchLight) = removalQueue.Dequeue();
 
             foreach (Vector2Int direction in TileUtil.Direction4)
             {
@@ -215,24 +237,24 @@ public class TileManager : MonoBehaviour
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
 
-                int neighborTorchLight = GetTorchLight(neighborPosition);
+                int neighborTorchLight = GetLight(neighborPosition, lightType);
 
                 if (neighborTorchLight != 0 && neighborTorchLight < torchLight)
                 {
-                    SetTorchLight(neighborPosition, 0);
-                    torchLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(neighborPosition, neighborTorchLight));
+                    SetLight(neighborPosition, 0, lightType);
+                    removalQueue.Enqueue(new Tuple<Vector2Int, int>(neighborPosition, neighborTorchLight));
                 }
                 else if (neighborTorchLight >= torchLight)
                 {
-                    torchLightPropagationQueue.Enqueue(neighborPosition);
+                    propagationQueue.Enqueue(neighborPosition);
                 }
             }
         }
 
-        while (torchLightPropagationQueue.Count != 0)
+        while (propagationQueue.Count != 0)
         {
-            Vector2Int lightPosition = torchLightPropagationQueue.Dequeue();
-            int torchLight = GetTorchLight(lightPosition);
+            Vector2Int lightPosition = propagationQueue.Dequeue();
+            int torchLight = GetLight(lightPosition, lightType);
 
             if (torchLight <= 0)
                 continue;
@@ -244,7 +266,7 @@ public class TileManager : MonoBehaviour
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
 
-                int neighborTorchLight = GetTorchLight(neighborPosition);
+                int neighborTorchLight = GetLight(neighborPosition, lightType);
 
                 int resultTorchLight = torchLight - 1;
 
@@ -253,78 +275,44 @@ public class TileManager : MonoBehaviour
                 if (isOpacity)
                     resultTorchLight -= 2;
 
-                if (neighborTorchLight >= resultTorchLight) 
+                if (neighborTorchLight >= resultTorchLight)
                     continue;
-                
-                SetTorchLight(neighborPosition, resultTorchLight);
-                torchLightPropagationQueue.Enqueue(neighborPosition);
+
+                SetLight(neighborPosition, resultTorchLight, lightType);
+                propagationQueue.Enqueue(neighborPosition);
             }
         }
     }
 
-    public void SetTorchLight(Vector2Int worldTilePosition, int value)
+    public void SetLight(Vector2Int worldTilePosition, int value, LightType type)
     {
         Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
         Vector2Int tilePosition = TileUtil.WorldTileToTile(worldTilePosition, chunkPosition, chunkSize);
         
         if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
         {
-            chunk.SetTorchLight(tilePosition, value);
+            chunk.SetLight(tilePosition, value, type);
         }
         else if(TileUtil.BoundaryCheck(worldTilePosition, mapSize))
         {
             TileChunk newChunk = GenerateChunk(chunkPosition);
-            newChunk.SetTorchLight(tilePosition, value);
-        }
+            newChunk.SetLight(tilePosition, value, type);
+        } 
     }
 
-    public int GetTorchLight(Vector2Int worldTilePosition)
+    public int GetLight(Vector2Int worldTilePosition, LightType type)
     {
         Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
         Vector2Int tilePosition = TileUtil.WorldTileToTile(worldTilePosition, chunkPosition, chunkSize);
         
         if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
         {
-            return chunk.GetTorchLight(tilePosition);
+            return chunk.GetLight(tilePosition, type);
         }
         else if(TileUtil.BoundaryCheck(worldTilePosition, mapSize))
         {
             TileChunk newChunk = GenerateChunk(chunkPosition);
-            return newChunk.GetTorchLight(tilePosition);
-        }
-
-        return 0;
-    }
-
-    public void SetSunLight(Vector2Int worldTilePosition, int value)
-    {
-        Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
-        Vector2Int tilePosition = TileUtil.WorldTileToTile(worldTilePosition, chunkPosition, chunkSize);
-        
-        if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
-        {
-            chunk.SetSunLight(tilePosition, value);
-        }
-        else if(TileUtil.BoundaryCheck(worldTilePosition, mapSize))
-        {
-            TileChunk newChunk = GenerateChunk(chunkPosition);
-            newChunk.SetSunLight(tilePosition, value);
-        }
-    }
-
-    public int GetSunLight(Vector2Int worldTilePosition)
-    {
-        Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
-        Vector2Int tilePosition = TileUtil.WorldTileToTile(worldTilePosition, chunkPosition, chunkSize);
-        
-        if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
-        {
-            return chunk.GetSunLight(tilePosition);
-        }
-        else if(TileUtil.BoundaryCheck(worldTilePosition, mapSize))
-        {
-            TileChunk newChunk = GenerateChunk(chunkPosition);
-            return newChunk.GetSunLight(tilePosition);
+            return newChunk.GetLight(tilePosition, type);
         }
 
         return 0;
@@ -335,22 +323,22 @@ public class TileManager : MonoBehaviour
         Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
         Vector2Int tilePosition = TileUtil.WorldTileToTile(worldTilePosition, chunkPosition, chunkSize);
 
-        Tile beforeTile;
+        LightEmission beforeEmission;
         if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
         {
-            chunk.GetTile(tilePosition, out beforeTile);
+            beforeEmission = chunk.GetEmission(tilePosition);
             if (chunk.SetTile(tilePosition, tile))
             {
-                CheckTileToUpdateLight(worldTilePosition, tile, beforeTile);
+                CheckTileToUpdateLight(worldTilePosition, tile, beforeEmission);
             }
         }
-        else if(TileUtil.BoundaryCheck(worldTilePosition, mapSize))
+        else if (TileUtil.BoundaryCheck(worldTilePosition, mapSize))
         {
             TileChunk newChunk = GenerateChunk(chunkPosition);
-            newChunk.GetTile(tilePosition, out beforeTile);
+            beforeEmission = newChunk.GetEmission(tilePosition);
             if (newChunk.SetTile(tilePosition, tile))
             {
-                CheckTileToUpdateLight(worldTilePosition, tile, beforeTile);
+                CheckTileToUpdateLight(worldTilePosition, tile, beforeEmission);
             }
         }
     }
