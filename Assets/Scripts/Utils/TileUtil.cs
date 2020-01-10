@@ -51,9 +51,19 @@ namespace OptIn.Util
             return worldTilePosition - chunkPosition * size;
         }
 
+        public static Vector2Int TileToWorldTile(Vector2Int tilePosition, Vector2Int chunkPosition, Vector2Int size)
+        {
+            return tilePosition + chunkPosition * size;
+        }
+
         public static bool BoundaryCheck(Vector2Int tilePosition, Vector2Int size)
         {
             return !(tilePosition.x < 0 || tilePosition.y < 0 || tilePosition.x >= size.x || tilePosition.y >= size.y);
+        }
+
+        public static bool BoundaryCheck(Vector2Int worldTilePosition, Vector2Int chunkPosition, Vector2Int size)
+        {
+            return BoundaryCheck(WorldTileToTile(worldTilePosition, chunkPosition, size), size);
         }
 
         public static readonly Vector2Int[] Direction4 =

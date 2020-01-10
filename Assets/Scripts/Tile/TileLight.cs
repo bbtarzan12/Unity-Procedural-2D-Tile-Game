@@ -36,6 +36,7 @@ namespace OptIn.Tile
         {
             if (value < 0)
                 value = 0;
+            
             switch (type)
             {
                 case LightType.S: 

@@ -9,6 +9,9 @@ using LightType = OptIn.Tile.LightType;
 
 public class TileManager : MonoBehaviour
 {
+    Tile[] tiles;
+    TileLight[] lights;
+    
     [SerializeField] Vector2Int mapSize;
     [SerializeField] Vector2Int chunkSize;
     [SerializeField] int numUpdateChunkInFrame;
@@ -27,13 +30,22 @@ public class TileManager : MonoBehaviour
     Queue<Tuple<Vector2Int, int>> torchGreenLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
     Queue<Tuple<Vector2Int, int>> torchBlueLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
 
-    static readonly Tile[] tiles =
+    public Tile[] Tiles => tiles;
+    public TileLight[] Lights => lights;
+
+    static readonly Tile[] testTiles =
     {
         Tile.Empty,
         new Tile{id = 1, color = new Color32(139, 192, 157, 255), attenuation = 50},
         new Tile{id = 2, color = new Color32(255, 242, 161, 255), emission = new LightEmission{r = TileLight.MaxTorchLight, g = TileLight.MaxTorchLight, b = 0}}, 
     };
 
+    void Awake()
+    {
+        tiles = new Tile[mapSize.x * mapSize.y];
+        lights = new TileLight[mapSize.x * mapSize.y];
+    }
+    
     void Start()
     {
         GenerateTerrain();
@@ -57,7 +69,7 @@ public class TileManager : MonoBehaviour
                     if(noise <= 0.3)
                         continue;
                     
-                    SetTile(new Vector2Int(x, y), tiles[1]);
+                    SetTile(new Vector2Int(x, y), testTiles[1]);
                 }
             }
         }
@@ -85,15 +97,15 @@ public class TileManager : MonoBehaviour
         Vector2Int worldTilePosition = TileUtil.WorldToWorldtile(mousePosition);
         if (Input.GetMouseButton(0))
         {
-            SetTile(worldTilePosition, tiles[1]);
+            SetTile(worldTilePosition, testTiles[1]);
         }
         else if (Input.GetMouseButton(1))
         {
-            SetTile(worldTilePosition, Tile.Empty);   
+            SetTile(worldTilePosition, testTiles[0]);   
         }
         else if (Input.GetKeyDown(KeyCode.T))
         {
-            SetTile(worldTilePosition, tiles[2]);
+            SetTile(worldTilePosition, testTiles[2]);
         }
         
     }
@@ -284,82 +296,89 @@ public class TileManager : MonoBehaviour
         }
     }
 
-    public void SetLight(Vector2Int worldTilePosition, int value, LightType type)
+    public bool SetLight(Vector2Int worldTilePosition, int value, LightType type)
     {
+        if (!TileUtil.BoundaryCheck(worldTilePosition, mapSize))
+            return false;
+
+        int index = TileUtil.To1DIndex(worldTilePosition, mapSize);
+
+        if (lights[index].GetLight(type) == value)
+            return false;
+        
         Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
-        Vector2Int tilePosition = TileUtil.WorldTileToTile(worldTilePosition, chunkPosition, chunkSize);
         
         if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
         {
-            chunk.SetLight(tilePosition, value, type);
+            chunk.SetLightDirty();
         }
-        else if(TileUtil.BoundaryCheck(worldTilePosition, mapSize))
+        else
         {
             TileChunk newChunk = GenerateChunk(chunkPosition);
-            newChunk.SetLight(tilePosition, value, type);
-        } 
+            newChunk.SetLightDirty();
+        }
+
+        lights[index].SetLight(value, type);
+
+        return true;
+    }
+
+    public void SetEmission(Vector2Int worldTilePosition, LightEmission emission)
+    {
+        SetLight(worldTilePosition, emission.r, LightType.R);
+        SetLight(worldTilePosition, emission.g, LightType.G);
+        SetLight(worldTilePosition, emission.b, LightType.B);
     }
 
     public int GetLight(Vector2Int worldTilePosition, LightType type)
     {
-        Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
-        Vector2Int tilePosition = TileUtil.WorldTileToTile(worldTilePosition, chunkPosition, chunkSize);
+        if (!TileUtil.BoundaryCheck(worldTilePosition, mapSize))
+            return 0;
         
-        if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
-        {
-            return chunk.GetLight(tilePosition, type);
-        }
-        else if(TileUtil.BoundaryCheck(worldTilePosition, mapSize))
-        {
-            TileChunk newChunk = GenerateChunk(chunkPosition);
-            return newChunk.GetLight(tilePosition, type);
-        }
-
-        return 0;
+        return lights[TileUtil.To1DIndex(worldTilePosition, mapSize)].GetLight(type);
     }
 
-    public void SetTile(Vector2Int worldTilePosition, Tile tile)
+    public bool SetTile(Vector2Int worldTilePosition, Tile tile)
     {
-        Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
-        Vector2Int tilePosition = TileUtil.WorldTileToTile(worldTilePosition, chunkPosition, chunkSize);
+        if (!TileUtil.BoundaryCheck(worldTilePosition, mapSize))
+            return false;
 
-        LightEmission beforeEmission;
+        int index = TileUtil.To1DIndex(worldTilePosition, mapSize);
+        
+        if (tiles[index].id == tile.id)
+            return false;
+        
+        Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
+
         if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
         {
-            beforeEmission = chunk.GetEmission(tilePosition);
-            if (chunk.SetTile(tilePosition, tile))
-            {
-                CheckTileToUpdateLight(worldTilePosition, tile, beforeEmission);
-            }
+            chunk.SetMeshDirty();    
         }
-        else if (TileUtil.BoundaryCheck(worldTilePosition, mapSize))
+        else
         {
             TileChunk newChunk = GenerateChunk(chunkPosition);
-            beforeEmission = newChunk.GetEmission(tilePosition);
-            if (newChunk.SetTile(tilePosition, tile))
-            {
-                CheckTileToUpdateLight(worldTilePosition, tile, beforeEmission);
-            }
+            newChunk.SetMeshDirty();
         }
+
+        LightEmission beforeEmission = tiles[index].emission;
+        tiles[index] = tile;
+
+        SetEmission(worldTilePosition, tile.emission);
+        CheckTileToUpdateLight(worldTilePosition, tile, beforeEmission);
+        
+        return true;
     }
 
     public bool GetTile(Vector2Int worldTilePosition, out Tile tile)
     {
-        Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
-        Vector2Int tilePosition = TileUtil.WorldTileToTile(worldTilePosition, chunkPosition, chunkSize);
-
-        if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
+        if (!TileUtil.BoundaryCheck(worldTilePosition, mapSize))
         {
-            return chunk.GetTile(tilePosition, out tile);
-        }
-        else if(TileUtil.BoundaryCheck(worldTilePosition, mapSize))
-        {
-            TileChunk newChunk = GenerateChunk(chunkPosition);
-            return newChunk.GetTile(tilePosition, out tile);
+            tile = Tile.Empty;
+            return false;
         }
 
-        tile = Tile.Empty;
-        return false;
+        tile = tiles[TileUtil.To1DIndex(worldTilePosition, mapSize)];
+        return true;
     }
     
     TileChunk GenerateChunk(Vector2Int chunkPosition)
@@ -368,14 +387,11 @@ public class TileManager : MonoBehaviour
         {
             return chunk;
         }
-        else
-        {
-            TileChunk newChunk = new GameObject(chunkPosition.ToString()).AddComponent<TileChunk>();
-            newChunk.transform.position = TileUtil.ChunkToWorld(chunkPosition, chunkSize);
-            newChunk.Init(chunkPosition, chunkSize, tileMaterial, lightMaterial);
-            chunks.Add(chunkPosition, newChunk);
-            
-            return newChunk;
-        }
+
+        TileChunk newChunk = new GameObject(chunkPosition.ToString()).AddComponent<TileChunk>();
+        newChunk.Init(chunkPosition, this, chunkSize, mapSize, tileMaterial, lightMaterial);
+        chunks.Add(chunkPosition, newChunk);
+        
+        return newChunk;
     }
 }

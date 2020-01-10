@@ -15,7 +15,9 @@ namespace OptIn.Tile
         PolygonCollider2D polygonCollider;
         MeshRenderer meshRenderer;
 
+        Vector2Int chunkPosition;
         Vector2Int chunkSize;
+        Vector2Int mapSize;
 
         List<List<Vector2>> paths = new List<List<Vector2>>();
         List<Vector3> vertices = new List<Vector3>();
@@ -34,10 +36,12 @@ namespace OptIn.Tile
             gameObject.layer = LayerMask.NameToLayer("Terrain");
         }
 
-        public void Init(Vector2Int size, Material tileMaterial)
+        public void Init(Vector2Int chunkSize, Vector2Int mapSize, Vector2Int chunkPosition, Material tileMaterial)
         {
             meshRenderer.sharedMaterial = tileMaterial;
-            chunkSize = size;
+            this.chunkSize = chunkSize;
+            this.mapSize = mapSize;
+            this.chunkPosition = chunkPosition;
         }
 
         public void UpdateMesh(Tile[] tiles)
@@ -72,8 +76,8 @@ namespace OptIn.Tile
             {
                 for (int y = 0; y < chunkSize.y;)
                 {
-                    Vector2Int tilePosition = new Vector2Int(x, y);
-                    int index = TileUtil.To1DIndex(tilePosition, chunkSize);
+                    Vector2Int tilePosition = TileUtil.TileToWorldTile(new Vector2Int(x, y), chunkPosition, chunkSize);
+                    int index = TileUtil.To1DIndex(tilePosition, mapSize);
                     ref Tile tile = ref tiles[index];
 
                     if (tile.id == 0)
@@ -95,10 +99,10 @@ namespace OptIn.Tile
                     {
                         Vector2Int nextPosition = tilePosition + Vector2Int.up * height;
                         
-                        if(!TileUtil.BoundaryCheck(nextPosition, chunkSize))
+                        if(!TileUtil.BoundaryCheck(nextPosition, chunkPosition, chunkSize))
                             break;
                         
-                        int nextIndex = TileUtil.To1DIndex(nextPosition, chunkSize);
+                        int nextIndex = TileUtil.To1DIndex(nextPosition, mapSize);
 
                         ref Tile nextTile = ref tiles[nextIndex];
 
@@ -119,13 +123,13 @@ namespace OptIn.Tile
                         {
                             Vector2Int nextPosition = tilePosition + Vector2Int.up * dy + Vector2Int.right * width;
 
-                            if (!TileUtil.BoundaryCheck(nextPosition, chunkSize))
+                            if (!TileUtil.BoundaryCheck(nextPosition, chunkPosition, chunkSize))
                             {
                                 done = true;
                                 break;
                             }
                         
-                            int nextIndex = TileUtil.To1DIndex(nextPosition, chunkSize);
+                            int nextIndex = TileUtil.To1DIndex(nextPosition, mapSize);
                             
                             ref Tile nextTile = ref tiles[nextIndex];
 

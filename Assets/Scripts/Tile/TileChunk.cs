@@ -9,13 +9,11 @@ namespace OptIn.Tile
     [RequireComponent(typeof(TileMesh))]
     public class TileChunk : MonoBehaviour
     {
-        Tile[] tiles;
-        TileLight[] lights;
         Vector2Int chunkPosition;
-        Vector2Int chunkSize;
         bool meshDirty;
         bool lightDirty;
 
+        TileManager tileManager;
         TileMesh mesh;
         TileLightTexture lightTexture;
 
@@ -28,16 +26,15 @@ namespace OptIn.Tile
             lightTexture = new GameObject("Light").AddComponent<TileLightTexture>();
         }
 
-        public void Init(Vector2Int position, Vector2Int size, Material tileMaterial, Material lightMaterial)
+        public void Init(Vector2Int position, TileManager manager, Vector2Int chunkSize, Vector2Int mapSize, Material tileMaterial, Material lightMaterial)
         {
+            tileManager = manager;
             chunkPosition = position;
-            chunkSize = size;
-            tiles = new Tile[chunkSize.x * chunkSize.y];
-            lights = new TileLight[chunkSize.x * chunkSize.y];
-            mesh.Init(chunkSize, tileMaterial);
-            lightTexture.Init(chunkSize, lightMaterial);
+            mesh.Init(chunkSize, mapSize, chunkPosition, tileMaterial);
+            lightTexture.Init(chunkSize, mapSize, chunkPosition, lightMaterial);
 
-            Vector3 lightTexturePosition = transform.position;
+            Vector2Int lightTextureTilePosition = TileUtil.TileToWorldTile(Vector2Int.zero, chunkPosition, chunkSize);
+            Vector3 lightTexturePosition = new Vector3(lightTextureTilePosition.x, lightTextureTilePosition.y);
             lightTexturePosition.z -= 10;
             lightTexture.transform.position = lightTexturePosition;
 
@@ -56,7 +53,7 @@ namespace OptIn.Tile
             if (!meshDirty)
                 return;
 
-            mesh.UpdateMesh(tiles);
+            mesh.UpdateMesh(tileManager.Tiles);
             meshDirty = false;
         }
 
@@ -65,75 +62,19 @@ namespace OptIn.Tile
             if (!lightDirty)
                 return;
 
-            lightTexture.UpdateTexture(lights);
+            lightTexture.UpdateTexture(tileManager.Lights);
             lightDirty = false;
         }
 
-        public void SetLight(Vector2Int tilePosition, int value, LightType type)
+        public void SetMeshDirty()
         {
-            if (!TileUtil.BoundaryCheck(tilePosition, chunkSize))
-                return;
+            meshDirty = true;
+        }
 
-            int index = TileUtil.To1DIndex(tilePosition, chunkSize);
-
-            if (lights[index].GetLight(type) == value)
-                return;
-
-            lights[index].SetLight(value, type);
+        public void SetLightDirty()
+        {
             lightDirty = true;
         }
 
-        public void SetLight(Vector2Int tilePosition, LightEmission emission)
-        {
-            SetLight(tilePosition, emission.r, LightType.R);
-            SetLight(tilePosition, emission.g, LightType.G);
-            SetLight(tilePosition, emission.b, LightType.B);
-        }
-
-        public int GetLight(Vector2Int tilePosition, LightType type)
-        {
-            if (!TileUtil.BoundaryCheck(tilePosition, chunkSize))
-                return 0;
-
-            return lights[TileUtil.To1DIndex(tilePosition, chunkSize)].GetLight(type);
-        }
-
-        public LightEmission GetEmission(Vector2Int tilePosition)
-        {
-            if (!TileUtil.BoundaryCheck(tilePosition, chunkSize))
-                return LightEmission.Zero;
-
-            return lights[TileUtil.To1DIndex(tilePosition, chunkSize)].GetEmission();
-        }
-
-        public bool SetTile(Vector2Int tilePosition, Tile tile)
-        {
-            if (!TileUtil.BoundaryCheck(tilePosition, chunkSize))
-                return false;
-
-            int index = TileUtil.To1DIndex(tilePosition, chunkSize);
-
-            if (tiles[index].id == tile.id)
-                return false;
-            
-            SetLight(tilePosition, tile.emission);
-            
-            tiles[index] = tile;
-            meshDirty = true;
-
-            return true;
-        }
-        
-        public bool GetTile(Vector2Int tilePosition, out Tile tile)
-        {
-            if (!TileUtil.BoundaryCheck(tilePosition, chunkSize))
-            {
-                tile = Tile.Empty;
-                return false;
-            }
-
-            tile = tiles[TileUtil.To1DIndex(tilePosition, chunkSize)];
-            return true;
-        }
     }
 }
