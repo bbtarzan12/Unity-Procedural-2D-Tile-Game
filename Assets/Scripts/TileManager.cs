@@ -137,10 +137,30 @@ public class TileManager : MonoBehaviour
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
 
-                int neighborSunLight = GetLight(neighborPosition, LightType.S);
+                for (int i = 0; i < 4; i++)
+                {
+                    LightType lightType = (LightType) i;
+                    int neighborLight = GetLight(neighborPosition, lightType);
+                    
+                    if (neighborLight <= 0)
+                        continue;
 
-                if (neighborSunLight > 0)
-                    sunLightPropagationQueue.Enqueue(neighborPosition);
+                    switch (lightType)
+                    {
+                        case LightType.S:
+                            sunLightPropagationQueue.Enqueue(neighborPosition);
+                            break;
+                        case LightType.R:
+                            torchRedLightPropagationQueue.Enqueue(neighborPosition);
+                            break;
+                        case LightType.G:
+                            torchGreenLightPropagationQueue.Enqueue(neighborPosition);
+                            break;
+                        case LightType.B:
+                            torchBlueLightPropagationQueue.Enqueue(neighborPosition);
+                            break;
+                    }
+                }
             }
         }
         else
@@ -148,8 +168,38 @@ public class TileManager : MonoBehaviour
             int sunLight = GetLight(worldTilePosition, LightType.S);
             SetLight(worldTilePosition, 0, LightType.S);
             sunLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, sunLight));
+            
+            foreach (Vector2Int direction in TileUtil.Direction4)
+            {
+                Vector2Int neighborPosition = worldTilePosition + direction;
+
+                if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
+                    continue;
+
+                for (int i = 1; i < 4; i++)
+                {
+                    LightType lightType = (LightType) i;
+                    int neighborLight = GetLight(neighborPosition, lightType);
+                    
+                    if (neighborLight <= 0)
+                        continue;
+
+                    switch (lightType)
+                    {
+                        case LightType.R:
+                            torchRedLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, neighborLight));
+                            break;
+                        case LightType.G:
+                            torchGreenLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, neighborLight));
+                            break;
+                        case LightType.B:
+                            torchBlueLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, neighborLight));
+                            break;
+                    }
+                }
+            }
         }
-        
+
         if (tile.emission.r > 0)
             torchRedLightPropagationQueue.Enqueue(worldTilePosition);
 
@@ -159,15 +209,14 @@ public class TileManager : MonoBehaviour
         if (tile.emission.b > 0)
             torchBlueLightPropagationQueue.Enqueue(worldTilePosition);
 
-        if (beforeEmission.r > 0) 
+        if (beforeEmission.r > 0)
             torchRedLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, beforeEmission.r));
 
-        if(beforeEmission.g > 0)
+        if (beforeEmission.g > 0)
             torchGreenLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, beforeEmission.g));
-            
-        if(beforeEmission.b > 0)
+
+        if (beforeEmission.b > 0)
             torchBlueLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, beforeEmission.b));
-        
     }
 
     public void SunLightPropagation()
