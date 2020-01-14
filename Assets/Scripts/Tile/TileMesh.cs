@@ -44,9 +44,9 @@ namespace OptIn.Tile
             this.chunkPosition = chunkPosition;
         }
 
-        public void UpdateMesh(Tile[] tiles)
+        public void UpdateMesh(int[] tiles, float[] waterDensities)
         {
-            GenerateMesh(tiles);
+            GenerateMesh(tiles, waterDensities);
             
             mesh.Clear();
             mesh.SetVertices(vertices);
@@ -61,7 +61,7 @@ namespace OptIn.Tile
                 polygonCollider.SetPath(i, paths[i]);
         }
 
-        void GenerateMesh(Tile[] tiles)
+        void GenerateMesh(int[] tiles, float[] waterDensities)
         {
             vertices.Clear();
             indices.Clear();
@@ -78,9 +78,9 @@ namespace OptIn.Tile
                 {
                     Vector2Int tilePosition = TileUtil.TileToWorldTile(new Vector2Int(x, y), chunkPosition, chunkSize);
                     int index = TileUtil.To1DIndex(tilePosition, mapSize);
-                    ref Tile tile = ref tiles[index];
+                    int tile = tiles[index];
 
-                    if (tile.id == 0)
+                    if (tile == 0)
                     {
                         y++;
                         continue;
@@ -104,9 +104,9 @@ namespace OptIn.Tile
                         
                         int nextIndex = TileUtil.To1DIndex(nextPosition, mapSize);
 
-                        ref Tile nextTile = ref tiles[nextIndex];
+                        int nextTile = tiles[nextIndex];
 
-                        if (nextTile.id != tile.id)
+                        if (nextTile != tile)
                             break;
                         
                         if (visited.Contains(nextPosition))
@@ -131,9 +131,9 @@ namespace OptIn.Tile
                         
                             int nextIndex = TileUtil.To1DIndex(nextPosition, mapSize);
                             
-                            ref Tile nextTile = ref tiles[nextIndex];
+                            int nextTile = tiles[nextIndex];
 
-                            if (nextTile.id != tile.id || visited.Contains(nextPosition))
+                            if (nextTile != tile || visited.Contains(nextPosition))
                             {
                                 done = true;
                                 break;
@@ -163,7 +163,17 @@ namespace OptIn.Tile
                         Vector3 vertex = tileVertices[i] * scale + tilePosition;
                         vertices.Add(vertex);
                         uvs.Add(tileVertices[i] * scale);
-                        colors.Add(tile.color);
+
+                        Color32 color = TileManager.tileInformations[tile].color;
+                        if(TileManager.tileInformations[tile].isSolid)
+                            colors.Add(color);
+                        else
+                        {
+                            float density = Mathf.Clamp(waterDensities[index], 0.3f, 1.0f);
+                            color.a = (byte) (byte.MaxValue * density);
+                            colors.Add(color);
+                        }   
+                        
                         
                         // Not Optimized Collider Generation
                         Vector2 point = colliderPoints[i] * scale + tilePosition;

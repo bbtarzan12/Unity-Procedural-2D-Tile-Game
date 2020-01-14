@@ -61,6 +61,11 @@ namespace OptIn.Util
             return !(tilePosition.x < 0 || tilePosition.y < 0 || tilePosition.x >= size.x || tilePosition.y >= size.y);
         }
 
+        public static bool BoundaryCheck(int tileIndex, Vector2Int size)
+        {
+            return !(tileIndex < 0 || tileIndex >= size.x * size.y);
+        }
+
         public static bool BoundaryCheck(Vector2Int worldTilePosition, Vector2Int chunkPosition, Vector2Int size)
         {
             return BoundaryCheck(WorldTileToTile(worldTilePosition, chunkPosition, size), size);

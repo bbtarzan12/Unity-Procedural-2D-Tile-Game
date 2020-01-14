@@ -53,7 +53,7 @@ namespace OptIn.Tile
             if (!meshDirty)
                 return;
 
-            mesh.UpdateMesh(tileManager.Tiles);
+            mesh.UpdateMesh(tileManager.Tiles, tileManager.WaterDensities);
             meshDirty = false;
         }
 

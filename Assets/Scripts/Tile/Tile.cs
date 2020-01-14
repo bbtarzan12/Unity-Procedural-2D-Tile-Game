@@ -8,7 +8,6 @@ namespace OptIn.Tile
         public LightEmission emission;
         public int attenuation;
         public Color32 color;
-        
-        public static readonly Tile Empty = new Tile{id = 0};
+        public bool isSolid;
     }
 }
