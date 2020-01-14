@@ -1,16 +1,19 @@
+using System;
+using System.Runtime.InteropServices;
+
 namespace OptIn.Tile
 {
     public enum LightType {S, R, G ,B}
 
+    [Serializable]
     public struct LightEmission
     {
         public byte r;
         public byte g;
         public byte b;
-
-        public static readonly LightEmission Zero = new LightEmission {r = 0, g = 0, b = 0};
     }
     
+    [Serializable]
     public struct TileLight
     {
         public const byte MaxSunLight = 255;

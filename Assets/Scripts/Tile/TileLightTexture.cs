@@ -1,4 +1,5 @@
 using OptIn.Util;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace OptIn.Tile
@@ -13,9 +14,9 @@ namespace OptIn.Tile
         MeshFilter filter;
         MeshRenderer meshRenderer;
 
-        Vector2Int chunkPosition;
-        Vector2Int chunkSize;
-        Vector2Int mapSize;
+        int2 chunkPosition;
+        int2 chunkSize;
+        int2 mapSize;
 
         void Awake()
         {
@@ -25,7 +26,7 @@ namespace OptIn.Tile
             gameObject.layer = LayerMask.NameToLayer("Light");
         }
 
-        public void Init(Vector2Int chunkSize, Vector2Int mapSize, Vector2Int chunkPosition, Material lightMaterial)
+        public void Init(int2 chunkSize, int2 mapSize, int2 chunkPosition, Material lightMaterial)
         {
             meshRenderer.sharedMaterial = lightMaterial;
             this.chunkSize = chunkSize;
@@ -37,11 +38,23 @@ namespace OptIn.Tile
             texture.filterMode = FilterMode.Point;
             meshRenderer.material.mainTexture = texture;
 
-            Vector3[] quadVertices = {new Vector2(0, 0) * chunkSize, new Vector2(0, 1) * chunkSize, new Vector2(1, 0) * chunkSize, new Vector2(1, 1) * chunkSize};
-
+            Vector3[] quadVertices =
+            {
+                new Vector3 {x = 0, y = 0}, new Vector3 {x = 0, y = chunkSize.y},
+                new Vector3 {x = chunkSize.x, y = 0}, new Vector3 {x = chunkSize.x, y = chunkSize.y}
+            };
+            
+            Vector2[] tileVertices =
+            {
+                new Vector2(0, 0),
+                new Vector2(0, 1),
+                new Vector2(1, 0),
+                new Vector2(1, 1) 
+            };
+            
             mesh.SetVertices(quadVertices);
             mesh.SetIndices(TileMesh.tileIndices, MeshTopology.Triangles, 0);
-            mesh.SetUVs(0, TileMesh.tileVertices);
+            mesh.SetUVs(0, tileVertices);
 
             filter.mesh = mesh;
         }
@@ -52,7 +65,7 @@ namespace OptIn.Tile
             {
                 for (int y = 0; y < chunkSize.y; y++)
                 {
-                    Vector2Int lightPosition = TileUtil.TileToWorldTile(new Vector2Int(x, y), chunkPosition, chunkSize);
+                    int2 lightPosition = TileUtil.TileToWorldTile(new int2(x, y), chunkPosition, chunkSize);
 
                     int index = TileUtil.To1DIndex(lightPosition, mapSize);
 

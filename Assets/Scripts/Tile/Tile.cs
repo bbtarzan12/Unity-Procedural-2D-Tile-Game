@@ -1,7 +1,10 @@
+using System;
+using System.Runtime.InteropServices;
 using UnityEngine;
 
 namespace OptIn.Tile
 {
+    [Serializable]
     public struct Tile
     {
         public int id;

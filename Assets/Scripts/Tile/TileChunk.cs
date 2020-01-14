@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using OptIn.Util;
 using SimplexNoise;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace OptIn.Tile
@@ -9,7 +10,7 @@ namespace OptIn.Tile
     [RequireComponent(typeof(TileMesh))]
     public class TileChunk : MonoBehaviour
     {
-        Vector2Int chunkPosition;
+        int2 chunkPosition;
         bool meshDirty;
         bool lightDirty;
 
@@ -18,7 +19,7 @@ namespace OptIn.Tile
         TileLightTexture lightTexture;
 
         public bool Dirty => meshDirty || lightDirty;
-        public Vector2Int ChunkPosition => chunkPosition;
+        public int2 ChunkPosition => chunkPosition;
 
         void Awake()
         {
@@ -26,14 +27,14 @@ namespace OptIn.Tile
             lightTexture = new GameObject("Light").AddComponent<TileLightTexture>();
         }
 
-        public void Init(Vector2Int position, TileManager manager, Vector2Int chunkSize, Vector2Int mapSize, Material tileMaterial, Material lightMaterial)
+        public void Init(int2 position, TileManager manager, int2 chunkSize, int2 mapSize, Material tileMaterial, Material lightMaterial)
         {
             tileManager = manager;
             chunkPosition = position;
             mesh.Init(chunkSize, mapSize, chunkPosition, tileMaterial);
             lightTexture.Init(chunkSize, mapSize, chunkPosition, lightMaterial);
 
-            Vector2Int lightTextureTilePosition = TileUtil.TileToWorldTile(Vector2Int.zero, chunkPosition, chunkSize);
+            int2 lightTextureTilePosition = TileUtil.TileToWorldTile(int2.zero, chunkPosition, chunkSize);
             Vector3 lightTexturePosition = new Vector3(lightTextureTilePosition.x, lightTextureTilePosition.y);
             lightTexturePosition.z -= 10;
             lightTexture.transform.position = lightTexturePosition;

@@ -4,6 +4,10 @@ using System.Collections.Generic;
 using OptIn.Tile;
 using OptIn.Util;
 using SimplexNoise;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
 using UnityEngine;
 using LightType = OptIn.Tile.LightType;
 
@@ -13,10 +17,9 @@ public class TileManager : MonoBehaviour
     TileLight[] lights;
 
     float[] waterDensities;
-    float[] waterDiff;
 
-    [SerializeField] Vector2Int mapSize;
-    [SerializeField] Vector2Int chunkSize;
+    [SerializeField] int2 mapSize;
+    [SerializeField] int2 chunkSize;
     [SerializeField] int numUpdateChunkInFrame;
     [SerializeField] Material tileMaterial;
     [SerializeField] Material lightMaterial;
@@ -28,17 +31,17 @@ public class TileManager : MonoBehaviour
     public float maxCompress = 0.25f;
     public float flowSpeed = 0.5f;
 
-    Dictionary<Vector2Int, TileChunk> chunks = new Dictionary<Vector2Int, TileChunk>();
-    Queue<Vector2Int> sunLightPropagationQueue = new Queue<Vector2Int>();
-    Queue<Tuple<Vector2Int, int>> sunLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
+    Dictionary<int2, TileChunk> chunks = new Dictionary<int2, TileChunk>();
+    Queue<int2> sunLightPropagationQueue = new Queue<int2>();
+    Queue<Tuple<int2, int>> sunLightRemovalQueue = new Queue<Tuple<int2, int>>();
 
-    Queue<Vector2Int> torchRedLightPropagationQueue = new Queue<Vector2Int>();
-    Queue<Vector2Int> torchGreenLightPropagationQueue = new Queue<Vector2Int>();
-    Queue<Vector2Int> torchBlueLightPropagationQueue = new Queue<Vector2Int>();
+    Queue<int2> torchRedLightPropagationQueue = new Queue<int2>();
+    Queue<int2> torchGreenLightPropagationQueue = new Queue<int2>();
+    Queue<int2> torchBlueLightPropagationQueue = new Queue<int2>();
 
-    Queue<Tuple<Vector2Int, int>> torchRedLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
-    Queue<Tuple<Vector2Int, int>> torchGreenLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
-    Queue<Tuple<Vector2Int, int>> torchBlueLightRemovalQueue = new Queue<Tuple<Vector2Int, int>>();
+    Queue<Tuple<int2, int>> torchRedLightRemovalQueue = new Queue<Tuple<int2, int>>();
+    Queue<Tuple<int2, int>> torchGreenLightRemovalQueue = new Queue<Tuple<int2, int>>();
+    Queue<Tuple<int2, int>> torchBlueLightRemovalQueue = new Queue<Tuple<int2, int>>();
     
     public int[] Tiles => tiles;
     public float[] WaterDensities => waterDensities;
@@ -59,7 +62,6 @@ public class TileManager : MonoBehaviour
         tiles = new int[mapSize.x * mapSize.y];
         lights = new TileLight[mapSize.x * mapSize.y];
         waterDensities = new float[mapSize.x * mapSize.y];
-        waterDiff = new float[mapSize.x * mapSize.y];
     }
     
     void Start()
@@ -85,7 +87,7 @@ public class TileManager : MonoBehaviour
                     if(noise <= 0.3)
                         continue;
                     
-                    SetTile(new Vector2Int(x, y), tileInformations[1].id);
+                    SetTile(new int2(x, y), tileInformations[1].id);
                 }
             }
         }
@@ -95,7 +97,7 @@ public class TileManager : MonoBehaviour
     {
         for (int x = 0; x < mapSize.x; x++)
         {
-            Vector2Int worldTilePosition = new Vector2Int(x, mapSize.y - 1);
+            int2 worldTilePosition = new int2(x, mapSize.y - 1);
             SetLight(worldTilePosition, TileLight.MaxSunLight, LightType.S);
             sunLightPropagationQueue.Enqueue(worldTilePosition);
         }
@@ -103,7 +105,7 @@ public class TileManager : MonoBehaviour
 
     void Update()
     {
-        UpdateFluidTiles();
+        UpdateFluid();
         SunLightPropagation();
         TorchLightPropagation(ref torchRedLightPropagationQueue, ref torchRedLightRemovalQueue, LightType.R);
         TorchLightPropagation(ref torchGreenLightPropagationQueue, ref torchGreenLightRemovalQueue, LightType.G);
@@ -111,7 +113,7 @@ public class TileManager : MonoBehaviour
         UpdateChunks();
 
         Vector3 mousePosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        Vector2Int worldTilePosition = TileUtil.WorldToWorldtile(mousePosition);
+        int2 worldTilePosition = TileUtil.WorldToWorldtile(mousePosition);
         if (Input.GetMouseButton(0))
         {
             SetTile(worldTilePosition, tileInformations[1].id);
@@ -132,146 +134,263 @@ public class TileManager : MonoBehaviour
         }
     }
 
-    void UpdateFluidTiles()
+    [BurstCompile]
+    struct CalculateFluidJob : IJobParallelFor
     {
-        Array.Clear(waterDiff, 0, waterDiff.Length);
+        [ReadOnly] public int2 mapSize;
+        [ReadOnly] public NativeArray<int> tiles;
+        
+        [ReadOnly] public float maxFlow;
+        [ReadOnly] public float minFlow;
+        [ReadOnly] public float minDensity;
+        [ReadOnly] public float maxDensity;
+        [ReadOnly] public float maxCompress;
+        [ReadOnly] public float flowSpeed;
+        
+        [NativeDisableParallelForRestriction] public NativeArray<float> waterDensities;
+        [NativeDisableParallelForRestriction] public NativeArray<float> waterDiff;
+        [NativeDisableParallelForRestriction] public NativeArray<bool> isSolid;
 
-        for (int y = 0, tileIndex = 0; y < mapSize.y; y++)
+
+        public void Execute(int tileIndex)
         {
-            for (int x = 0; x < mapSize.x; x++, tileIndex++)
+            int2 tilePosition = TileUtil.To2DIndex(tileIndex, mapSize);
+
+            if (tiles[tileIndex] != waterID)
             {
-                Vector2Int tilePosition = new Vector2Int(x, y);
+                if (isSolid[tiles[tileIndex]])
+                    waterDensities[tileIndex] = 0.0f;
 
-                if (tiles[tileIndex] != waterID)
-                {
-                    if (tileInformations[tiles[tileIndex]].isSolid)
-                        waterDensities[tileIndex] = 0.0f;
+                return;
+            }
 
-                    continue;
-                }
+            if (waterDensities[tileIndex] < minDensity)
+            {
+                waterDensities[tileIndex] = 0;
+                return;
+            }
 
-                if (waterDensities[tileIndex] < minDensity)
-                {
-                    waterDensities[tileIndex] = 0;
-                    continue;
-                }
+            float remainingDensity = waterDensities[tileIndex];
 
-                float remainingDensity = waterDensities[tileIndex];
+            if (remainingDensity <= 0)
+                return;
 
-                if (remainingDensity <= 0)
-                    continue;
+            int2 downPosition = tilePosition + TileUtil.Down;
+            int downIndex = TileUtil.To1DIndex(downPosition, mapSize);
+            if (TileUtil.BoundaryCheck(downPosition, mapSize) && !isSolid[tiles[downIndex]])
+            {
+                float flow = CalculateStableDensity(remainingDensity + waterDensities[downIndex]) - waterDensities[downIndex];
+                if (flow > minFlow)
+                    flow *= flowSpeed;
 
-                Vector2Int downPosition = tilePosition + Vector2Int.down;
-                int downIndex = TileUtil.To1DIndex(downPosition, mapSize);
-                if (TileUtil.BoundaryCheck(downPosition, mapSize) && !tileInformations[tiles[downIndex]].isSolid)
-                {
-                    float flow = CalculateStableDensity(remainingDensity + waterDensities[downIndex]) - waterDensities[downIndex];
-                    if (flow > minFlow)
-                        flow *= flowSpeed;
+                flow = Mathf.Clamp(flow, 0, Mathf.Min(maxFlow, remainingDensity));
+                waterDiff[tileIndex] -= flow;
+                waterDiff[downIndex] += flow;
+                remainingDensity -= flow;
+            }
 
-                    flow = Mathf.Clamp(flow, 0, Mathf.Min(maxFlow, remainingDensity));
-                    waterDiff[tileIndex] -= flow;
-                    waterDiff[downIndex] += flow;
-                    remainingDensity -= flow;
-                }
+            if (remainingDensity < minDensity)
+            {
+                waterDiff[tileIndex] -= remainingDensity;
+                return;
+            }
 
-                if (remainingDensity < minDensity)
-                {
-                    waterDiff[tileIndex] -= remainingDensity;
-                    continue;
-                }
+            int2 leftPosition = tilePosition + TileUtil.Left;
+            int leftIndex = TileUtil.To1DIndex(leftPosition, mapSize);
+            if (TileUtil.BoundaryCheck(leftIndex, mapSize) && !isSolid[tiles[leftIndex]])
+            {
+                float flow = (remainingDensity - waterDensities[leftIndex]) / 4.0f;
+                if (flow > minFlow)
+                    flow *= flowSpeed;
 
-                Vector2Int leftPosition = tilePosition + Vector2Int.left;
-                int leftIndex = TileUtil.To1DIndex(leftPosition, mapSize);
-                if (TileUtil.BoundaryCheck(leftIndex, mapSize) && !tileInformations[tiles[leftIndex]].isSolid)
-                {
-                    float flow = (remainingDensity - waterDensities[leftIndex]) / 4.0f;
-                    if (flow > minFlow)
-                        flow *= flowSpeed;
+                flow = Mathf.Clamp(flow, 0, Mathf.Min(maxFlow, remainingDensity));
+                waterDiff[tileIndex] -= flow;
+                waterDiff[leftIndex] += flow;
+                remainingDensity -= flow;
+            }
 
-                    flow = Mathf.Clamp(flow, 0, Mathf.Min(maxFlow, remainingDensity));
-                    waterDiff[tileIndex] -= flow;
-                    waterDiff[leftIndex] += flow;
-                    remainingDensity -= flow;
-                }
+            if (remainingDensity < minDensity)
+            {
+                waterDiff[tileIndex] -= remainingDensity;
+                return;
+            }
 
-                if (remainingDensity < minDensity)
-                {
-                    waterDiff[tileIndex] -= remainingDensity;
-                    continue;
-                }
+            int2 rightPosition = tilePosition + TileUtil.Right;
+            int rightIndex = TileUtil.To1DIndex(rightPosition, mapSize);
+            if (TileUtil.BoundaryCheck(rightIndex, mapSize) && !isSolid[tiles[rightIndex]])
+            {
+                float flow = (remainingDensity - waterDensities[rightIndex]) / 4.0f;
+                if (flow > minFlow)
+                    flow *= flowSpeed;
 
-                Vector2Int rightPosition = tilePosition + Vector2Int.right;
-                int rightIndex = TileUtil.To1DIndex(rightPosition, mapSize);
-                if (TileUtil.BoundaryCheck(rightIndex, mapSize) && !tileInformations[tiles[rightIndex]].isSolid)
-                {
-                    float flow = (remainingDensity - waterDensities[rightIndex]) / 4.0f;
-                    if (flow > minFlow)
-                        flow *= flowSpeed;
+                flow = Mathf.Clamp(flow, 0, Mathf.Min(maxFlow, remainingDensity));
+                waterDiff[tileIndex] -= flow;
+                waterDiff[rightIndex] += flow;
+                remainingDensity -= flow;
+            }
 
-                    flow = Mathf.Clamp(flow, 0, Mathf.Min(maxFlow, remainingDensity));
-                    waterDiff[tileIndex] -= flow;
-                    waterDiff[rightIndex] += flow;
-                    remainingDensity -= flow;
-                }
+            if (remainingDensity < minDensity)
+            {
+                waterDiff[tileIndex] -= remainingDensity;
+                return;
+            }
 
-                if (remainingDensity < minDensity)
-                {
-                    waterDiff[tileIndex] -= remainingDensity;
-                    continue;
-                }
+            int2 upPosition = tilePosition + TileUtil.Up;
+            int upIndex = TileUtil.To1DIndex(upPosition, mapSize);
+            if (TileUtil.BoundaryCheck(upIndex, mapSize) && !isSolid[tiles[upIndex]])
+            {
+                float flow = remainingDensity - CalculateStableDensity(remainingDensity + waterDensities[upIndex]);
+                if (flow > minFlow)
+                    flow *= flowSpeed;
 
-                Vector2Int upPosition = tilePosition + Vector2Int.up;
-                int upIndex = TileUtil.To1DIndex(upPosition, mapSize);
-                if (TileUtil.BoundaryCheck(upIndex, mapSize) && !tileInformations[tiles[upIndex]].isSolid)
-                {
-                    float flow = remainingDensity - CalculateStableDensity(remainingDensity + waterDensities[upIndex]);
-                    if (flow > minFlow)
-                        flow *= flowSpeed;
+                flow = Mathf.Clamp(flow, 0, Mathf.Min(maxFlow, remainingDensity));
+                waterDiff[tileIndex] -= flow;
+                waterDiff[upIndex] += flow;
+                remainingDensity -= flow;
+            }
 
-                    flow = Mathf.Clamp(flow, 0, Mathf.Min(maxFlow, remainingDensity));
-                    waterDiff[tileIndex] -= flow;
-                    waterDiff[upIndex] += flow;
-                    remainingDensity -= flow;
-                }
-
-                if (remainingDensity < minDensity)
-                {
-                    waterDiff[tileIndex] -= remainingDensity;
-                    continue;
-                }
+            if (remainingDensity < minDensity)
+            {
+                waterDiff[tileIndex] -= remainingDensity;
             }
         }
-
-        for (int i = 0; i < tiles.Length; i++)
+        
+        float CalculateStableDensity(float totalDensity)
         {
-            if(tileInformations[tiles[i]].isSolid)
-                continue;
-            
-            waterDensities[i] += waterDiff[i];
-
-            if (waterDensities[i] < minDensity && tiles[i] == waterID)
-            {
-                waterDensities[i] = 0.0f;
-                SetTile(TileUtil.To2DIndex(i, mapSize), tileInformations[0].id);
-            }
-            else if(waterDensities[i] >= minDensity && tiles[i] != waterID)
-            {
-                SetTile(TileUtil.To2DIndex(i, mapSize), waterID);
-            }
+            if (totalDensity <= maxDensity)
+                return maxDensity;
+            else if (totalDensity < 2 * maxDensity + maxCompress)
+                return (maxDensity * maxDensity + totalDensity * maxCompress) / (maxDensity + maxCompress);
+            else
+                return (totalDensity + maxCompress) / 2f;
         }
     }
 
-    float CalculateStableDensity(float totalDensity)
+    [BurstCompile]
+    struct ApplyFluidJob : IJobParallelFor
     {
-        if (totalDensity <= maxDensity)
-            return maxDensity;
-        else if (totalDensity < 2 * maxDensity + maxCompress)
-            return (maxDensity * maxDensity + totalDensity * maxCompress) / (maxDensity + maxCompress);
-        else
-            return (totalDensity + maxCompress) / 2f;
+        public NativeArray<float> waterDensities;
+        public NativeArray<float> waterDiff;
+        
+        public void Execute(int index)
+        {
+            waterDensities[index] += waterDiff[index];
+        }
     }
-    
+
+    [BurstCompile]
+    struct FilterRemoveFluidJob : IJobParallelForFilter
+    {
+        [ReadOnly] public float minDensity;
+        [ReadOnly] public NativeArray<float> waterDensities;
+        [ReadOnly] public NativeArray<int> tiles;
+        [ReadOnly] public NativeArray<bool> isSolid;
+
+        public bool Execute(int index)
+        {
+            if (isSolid[tiles[index]])
+                return false;
+
+            return waterDensities[index] < minDensity && tiles[index] == waterID;
+        }
+    }
+
+    [BurstCompile]
+    struct FilterCreateFluidJob : IJobParallelForFilter
+    {
+        [ReadOnly] public float minDensity;
+        [ReadOnly] public NativeArray<float> waterDensities;
+        [ReadOnly] public NativeArray<int> tiles;
+        [ReadOnly] public NativeArray<bool> isSolid;
+
+        public bool Execute(int index)
+        {
+            if (isSolid[tiles[index]])
+                return false;
+
+            return waterDensities[index] >= minDensity && tiles[index] != waterID;
+        }
+    }
+
+    void UpdateFluid()
+    {
+        NativeArray<int> nativeTiles = new NativeArray<int>(tiles, Allocator.TempJob);
+        NativeArray<float> nativeWaterDensities = new NativeArray<float>(waterDensities, Allocator.TempJob);
+        NativeArray<float> nativeWaterDiff = new NativeArray<float>(tiles.Length, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+        NativeArray<bool> nativeIsSolid = new NativeArray<bool>(tileInformations.Length, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+        NativeList<int> nativeIndices = new NativeList<int>(Allocator.TempJob);
+
+        for (int i = 0; i < nativeIsSolid.Length; i++)
+        {
+            nativeIsSolid[i] = tileInformations[i].isSolid;
+        }
+        
+        CalculateFluidJob fluidJob = new CalculateFluidJob
+        {
+            mapSize = mapSize,
+            maxFlow = maxFlow,
+            minFlow = minFlow,
+            minDensity = minDensity,
+            maxDensity = maxDensity,
+            maxCompress = maxCompress,
+            flowSpeed = flowSpeed,
+            tiles = nativeTiles,
+            waterDensities = nativeWaterDensities,
+            waterDiff = nativeWaterDiff,
+            isSolid = nativeIsSolid
+        };
+
+        fluidJob.Schedule(tiles.Length, 32).Complete();
+        
+        ApplyFluidJob applyFluidJob = new ApplyFluidJob
+        {
+            waterDensities = nativeWaterDensities,
+            waterDiff = nativeWaterDiff
+        };
+        
+        applyFluidJob.Schedule(waterDensities.Length, 32).Complete();
+        
+        nativeWaterDensities.CopyTo(waterDensities);
+
+        FilterRemoveFluidJob filterRemoveFluidJob = new FilterRemoveFluidJob
+        {
+            tiles = nativeTiles,
+            isSolid = nativeIsSolid,
+            minDensity = minDensity,
+            waterDensities = nativeWaterDensities
+        };
+
+        filterRemoveFluidJob.ScheduleAppend(nativeIndices, tiles.Length, 32).Complete();
+
+        foreach (int fluidIndex in nativeIndices)
+        {
+            waterDensities[fluidIndex] = 0.0f;
+            SetTile(TileUtil.To2DIndex(fluidIndex, mapSize), tileInformations[0].id);
+        }
+
+        nativeIndices.Clear();
+        FilterCreateFluidJob filterCreateFluidJob = new FilterCreateFluidJob
+        {
+            tiles = nativeTiles,
+            isSolid = nativeIsSolid,
+            minDensity = minDensity,
+            waterDensities = nativeWaterDensities
+        };
+        
+        filterCreateFluidJob.ScheduleAppend(nativeIndices, tiles.Length, 32).Complete();
+
+        foreach (int fluidIndex in nativeIndices)
+        {
+            SetTile(TileUtil.To2DIndex(fluidIndex, mapSize), waterID);
+        }
+        
+        nativeTiles.Dispose();
+        nativeWaterDensities.Dispose();
+        nativeWaterDiff.Dispose();
+        nativeIsSolid.Dispose();
+        nativeIndices.Dispose();
+    }
+
     void UpdateChunks()
     {
         int numChunk = 0;
@@ -288,13 +407,13 @@ public class TileManager : MonoBehaviour
         }
     }
 
-    void CheckTileToUpdateLight(Vector2Int worldTilePosition, int id, LightEmission beforeEmission)
+    void CheckTileToUpdateLight(int2 worldTilePosition, int id, LightEmission beforeEmission)
     {
         if (id == 0)
         {
-            foreach (Vector2Int direction in TileUtil.Direction4)
+            foreach (int2 direction in TileUtil.Direction4)
             {
-                Vector2Int neighborPosition = worldTilePosition + direction;
+                int2 neighborPosition = worldTilePosition + direction;
 
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
@@ -329,11 +448,11 @@ public class TileManager : MonoBehaviour
         {
             int sunLight = GetLight(worldTilePosition, LightType.S);
             SetLight(worldTilePosition, 0, LightType.S);
-            sunLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, sunLight));
+            sunLightRemovalQueue.Enqueue(new Tuple<int2, int>(worldTilePosition, sunLight));
             
-            foreach (Vector2Int direction in TileUtil.Direction4)
+            foreach (int2 direction in TileUtil.Direction4)
             {
-                Vector2Int neighborPosition = worldTilePosition + direction;
+                int2 neighborPosition = worldTilePosition + direction;
 
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
@@ -349,13 +468,13 @@ public class TileManager : MonoBehaviour
                     switch (lightType)
                     {
                         case LightType.R:
-                            torchRedLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, neighborLight));
+                            torchRedLightRemovalQueue.Enqueue(new Tuple<int2, int>(worldTilePosition, neighborLight));
                             break;
                         case LightType.G:
-                            torchGreenLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, neighborLight));
+                            torchGreenLightRemovalQueue.Enqueue(new Tuple<int2, int>(worldTilePosition, neighborLight));
                             break;
                         case LightType.B:
-                            torchBlueLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, neighborLight));
+                            torchBlueLightRemovalQueue.Enqueue(new Tuple<int2, int>(worldTilePosition, neighborLight));
                             break;
                     }
                 }
@@ -372,34 +491,34 @@ public class TileManager : MonoBehaviour
             torchBlueLightPropagationQueue.Enqueue(worldTilePosition);
 
         if (beforeEmission.r > 0)
-            torchRedLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, beforeEmission.r));
+            torchRedLightRemovalQueue.Enqueue(new Tuple<int2, int>(worldTilePosition, beforeEmission.r));
 
         if (beforeEmission.g > 0)
-            torchGreenLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, beforeEmission.g));
+            torchGreenLightRemovalQueue.Enqueue(new Tuple<int2, int>(worldTilePosition, beforeEmission.g));
 
         if (beforeEmission.b > 0)
-            torchBlueLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(worldTilePosition, beforeEmission.b));
+            torchBlueLightRemovalQueue.Enqueue(new Tuple<int2, int>(worldTilePosition, beforeEmission.b));
     }
 
     public void SunLightPropagation()
     {
         while (sunLightRemovalQueue.Count != 0)
         {
-            (Vector2Int lightPosition, int sunLight) = sunLightRemovalQueue.Dequeue();
+            (int2 lightPosition, int sunLight) = sunLightRemovalQueue.Dequeue();
 
-            foreach (Vector2Int direction in TileUtil.Direction4)
+            foreach (int2 direction in TileUtil.Direction4)
             {
-                Vector2Int neighborPosition = lightPosition + direction;
+                int2 neighborPosition = lightPosition + direction;
 
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
 
                 int neighborSunLight = GetLight(neighborPosition, LightType.S);
 
-                if (neighborSunLight != 0 && neighborSunLight < sunLight || direction == Vector2Int.down && sunLight == TileLight.MaxSunLight)
+                if (neighborSunLight != 0 && neighborSunLight < sunLight || direction.Equals(TileUtil.Down) && sunLight == TileLight.MaxSunLight)
                 {
                     SetLight(neighborPosition, 0, LightType.S);
-                    sunLightRemovalQueue.Enqueue(new Tuple<Vector2Int, int>(neighborPosition, neighborSunLight));
+                    sunLightRemovalQueue.Enqueue(new Tuple<int2, int>(neighborPosition, neighborSunLight));
                 }
                 else if (neighborSunLight >= sunLight)
                 {
@@ -410,15 +529,15 @@ public class TileManager : MonoBehaviour
 
         while (sunLightPropagationQueue.Count != 0)
         {
-            Vector2Int lightPosition = sunLightPropagationQueue.Dequeue();
+            int2 lightPosition = sunLightPropagationQueue.Dequeue();
             int sunLight = GetLight(lightPosition, LightType.S);
 
             if (sunLight <= 0)
                 continue;
 
-            foreach (Vector2Int direction in TileUtil.Direction4)
+            foreach (int2 direction in TileUtil.Direction4)
             {
-                Vector2Int neighborPosition = lightPosition + direction;
+                int2 neighborPosition = lightPosition + direction;
 
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
@@ -434,7 +553,7 @@ public class TileManager : MonoBehaviour
                 if (isOpacity)
                     resultSunLight -= tileInformations[neighborTile].attenuation;
 
-                if (direction == Vector2Int.down && !isOpacity && sunLight == TileLight.MaxSunLight)
+                if (direction.Equals(TileUtil.Down) && !isOpacity && sunLight == TileLight.MaxSunLight)
                 {
                     SetLight(neighborPosition, TileLight.MaxSunLight, LightType.S);
                     sunLightPropagationQueue.Enqueue(neighborPosition);
@@ -449,15 +568,15 @@ public class TileManager : MonoBehaviour
         }
     }
 
-    public void TorchLightPropagation(ref Queue<Vector2Int> propagationQueue, ref Queue<Tuple<Vector2Int, int>> removalQueue, LightType lightType)
+    public void TorchLightPropagation(ref Queue<int2> propagationQueue, ref Queue<Tuple<int2, int>> removalQueue, LightType lightType)
     {
         while (removalQueue.Count != 0)
         {
-            (Vector2Int lightPosition, int torchLight) = removalQueue.Dequeue();
+            (int2 lightPosition, int torchLight) = removalQueue.Dequeue();
 
-            foreach (Vector2Int direction in TileUtil.Direction4)
+            foreach (int2 direction in TileUtil.Direction4)
             {
-                Vector2Int neighborPosition = lightPosition + direction;
+                int2 neighborPosition = lightPosition + direction;
 
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
@@ -467,7 +586,7 @@ public class TileManager : MonoBehaviour
                 if (neighborTorchLight != 0 && neighborTorchLight < torchLight)
                 {
                     SetLight(neighborPosition, 0, lightType);
-                    removalQueue.Enqueue(new Tuple<Vector2Int, int>(neighborPosition, neighborTorchLight));
+                    removalQueue.Enqueue(new Tuple<int2, int>(neighborPosition, neighborTorchLight));
                 }
                 else if (neighborTorchLight >= torchLight)
                 {
@@ -478,15 +597,15 @@ public class TileManager : MonoBehaviour
 
         while (propagationQueue.Count != 0)
         {
-            Vector2Int lightPosition = propagationQueue.Dequeue();
+            int2 lightPosition = propagationQueue.Dequeue();
             int torchLight = GetLight(lightPosition, lightType);
 
             if (torchLight <= 0)
                 continue;
 
-            foreach (Vector2Int direction in TileUtil.Direction4)
+            foreach (int2 direction in TileUtil.Direction4)
             {
-                Vector2Int neighborPosition = lightPosition + direction;
+                int2 neighborPosition = lightPosition + direction;
 
                 if (!TileUtil.BoundaryCheck(neighborPosition, mapSize))
                     continue;
@@ -511,7 +630,7 @@ public class TileManager : MonoBehaviour
         }
     }
 
-    public bool SetLight(Vector2Int worldTilePosition, int value, LightType type)
+    public bool SetLight(int2 worldTilePosition, int value, LightType type)
     {
         if (!TileUtil.BoundaryCheck(worldTilePosition, mapSize))
             return false;
@@ -521,7 +640,7 @@ public class TileManager : MonoBehaviour
         if (lights[index].GetLight(type) == value)
             return false;
         
-        Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
+        int2 chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
         
         if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
         {
@@ -538,14 +657,14 @@ public class TileManager : MonoBehaviour
         return true;
     }
 
-    public void SetEmission(Vector2Int worldTilePosition, LightEmission emission)
+    public void SetEmission(int2 worldTilePosition, LightEmission emission)
     {
         SetLight(worldTilePosition, emission.r, LightType.R);
         SetLight(worldTilePosition, emission.g, LightType.G);
         SetLight(worldTilePosition, emission.b, LightType.B);
     }
 
-    public int GetLight(Vector2Int worldTilePosition, LightType type)
+    public int GetLight(int2 worldTilePosition, LightType type)
     {
         if (!TileUtil.BoundaryCheck(worldTilePosition, mapSize))
             return 0;
@@ -553,7 +672,7 @@ public class TileManager : MonoBehaviour
         return lights[TileUtil.To1DIndex(worldTilePosition, mapSize)].GetLight(type);
     }
 
-    public bool SetTile(Vector2Int worldTilePosition, int id)
+    public bool SetTile(int2 worldTilePosition, int id)
     {
         if (!TileUtil.BoundaryCheck(worldTilePosition, mapSize))
             return false;
@@ -563,7 +682,7 @@ public class TileManager : MonoBehaviour
         if (tiles[index] == id)
             return false;
         
-        Vector2Int chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
+        int2 chunkPosition = TileUtil.WorldTileToChunk(worldTilePosition, chunkSize);
 
         if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
         {
@@ -587,7 +706,7 @@ public class TileManager : MonoBehaviour
         return true;
     }
 
-    public int GetTile(Vector2Int worldTilePosition)
+    public int GetTile(int2 worldTilePosition)
     {
         if (!TileUtil.BoundaryCheck(worldTilePosition, mapSize))
         {
@@ -597,7 +716,7 @@ public class TileManager : MonoBehaviour
         return tiles[TileUtil.To1DIndex(worldTilePosition, mapSize)];
     }
     
-    TileChunk GenerateChunk(Vector2Int chunkPosition)
+    TileChunk GenerateChunk(int2 chunkPosition)
     {
         if (chunks.TryGetValue(chunkPosition, out TileChunk chunk))
         {

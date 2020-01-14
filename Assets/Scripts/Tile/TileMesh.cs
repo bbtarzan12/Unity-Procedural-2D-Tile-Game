@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using OptIn.Util;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace OptIn.Tile
@@ -15,16 +16,16 @@ namespace OptIn.Tile
         PolygonCollider2D polygonCollider;
         MeshRenderer meshRenderer;
 
-        Vector2Int chunkPosition;
-        Vector2Int chunkSize;
-        Vector2Int mapSize;
+        int2 chunkPosition;
+        int2 chunkSize;
+        int2 mapSize;
 
         List<List<Vector2>> paths = new List<List<Vector2>>();
         List<Vector3> vertices = new List<Vector3>();
         List<int> indices = new List<int>();
         List<Vector4> uvs = new List<Vector4>();
         List<Color32> colors = new List<Color32>();
-        HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
+        HashSet<int2> visited = new HashSet<int2>();
 
         
         void Awake()
@@ -36,7 +37,7 @@ namespace OptIn.Tile
             gameObject.layer = LayerMask.NameToLayer("Terrain");
         }
 
-        public void Init(Vector2Int chunkSize, Vector2Int mapSize, Vector2Int chunkPosition, Material tileMaterial)
+        public void Init(int2 chunkSize, int2 mapSize, int2 chunkPosition, Material tileMaterial)
         {
             meshRenderer.sharedMaterial = tileMaterial;
             this.chunkSize = chunkSize;
@@ -76,7 +77,7 @@ namespace OptIn.Tile
             {
                 for (int y = 0; y < chunkSize.y;)
                 {
-                    Vector2Int tilePosition = TileUtil.TileToWorldTile(new Vector2Int(x, y), chunkPosition, chunkSize);
+                    int2 tilePosition = TileUtil.TileToWorldTile(new int2(x, y), chunkPosition, chunkSize);
                     int index = TileUtil.To1DIndex(tilePosition, mapSize);
                     int tile = tiles[index];
 
@@ -97,7 +98,7 @@ namespace OptIn.Tile
                     int height;
                     for (height = 1; height + y < chunkSize.y; height++)
                     {
-                        Vector2Int nextPosition = tilePosition + Vector2Int.up * height;
+                        int2 nextPosition = tilePosition + TileUtil.Up * height;
                         
                         if(!TileUtil.BoundaryCheck(nextPosition, chunkPosition, chunkSize))
                             break;
@@ -121,7 +122,7 @@ namespace OptIn.Tile
                     {
                         for (int dy = 0; dy < height; dy++)
                         {
-                            Vector2Int nextPosition = tilePosition + Vector2Int.up * dy + Vector2Int.right * width;
+                            int2 nextPosition = tilePosition + TileUtil.Up * dy + TileUtil.Right * width;
 
                             if (!TileUtil.BoundaryCheck(nextPosition, chunkPosition, chunkSize))
                             {
@@ -147,22 +148,24 @@ namespace OptIn.Tile
 
                         for (int dy = 0; dy < height; dy++)
                         {
-                            Vector2Int nextPosition = 
+                            int2 nextPosition = 
                                 tilePosition + 
-                                Vector2Int.up * dy + 
-                                Vector2Int.right * width;
+                                TileUtil.Up * dy + 
+                                TileUtil.Right * width;
                             visited.Add(nextPosition);
                         }
                     }
 
-                    Vector2 scale = new Vector2(width, height);
+                    float2 scale = new float2(width, height);
 
                     List<Vector2> points = new List<Vector2>();
                     for (int i = 0; i < 4; i++)
                     {
-                        Vector3 vertex = tileVertices[i] * scale + tilePosition;
+                        Vector2 vertex = tileVertices[i] * scale + tilePosition;
                         vertices.Add(vertex);
-                        uvs.Add(tileVertices[i] * scale);
+
+                        Vector2 uv = tileVertices[i] * scale;
+                        uvs.Add(uv);
 
                         Color32 color = TileManager.tileInformations[tile].color;
                         if(TileManager.tileInformations[tile].isSolid)
@@ -199,20 +202,20 @@ namespace OptIn.Tile
             0, 3, 2
         };
         
-        public static readonly Vector2[] tileVertices =
+        public static readonly float2[] tileVertices =
         {
-            new Vector2(0, 0),
-            new Vector2(0, 1),
-            new Vector2(1, 0),
-            new Vector2(1, 1) 
+            new float2(0, 0),
+            new float2(0, 1),
+            new float2(1, 0),
+            new float2(1, 1) 
         };
 
-        public static readonly Vector2[] colliderPoints =
+        public static readonly float2[] colliderPoints =
         {
-            new Vector2(0, 0),
-            new Vector2(0, 1),
-            new Vector2(1, 1), 
-            new Vector2(1, 0)
+            new float2(0, 0),
+            new float2(0, 1),
+            new float2(1, 1), 
+            new float2(1, 0)
         };
     }   
 }
