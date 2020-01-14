@@ -57,9 +57,10 @@ namespace OptIn.Tile
             
             filter.mesh = mesh;
 
-            polygonCollider.pathCount = paths.Count;
-            for(int i = 0 ; i < paths.Count; i++)
-                polygonCollider.SetPath(i, paths[i]);
+            // Todo : Built-In Collider Baking is Too Slow
+            // polygonCollider.pathCount = paths.Count;
+            // for(int i = 0 ; i < paths.Count; i++)
+            //     polygonCollider.SetPath(i, paths[i]);
         }
 
         void GenerateMesh(int[] tiles, float[] waterDensities)

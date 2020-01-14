@@ -24,12 +24,15 @@ public class TileManager : MonoBehaviour
     [SerializeField] Material tileMaterial;
     [SerializeField] Material lightMaterial;
     
-    public float maxFlow = 4.0f;
-    public float minFlow = 0.005f;
-    public float minDensity = 0.005f;
-    public float maxDensity = 1.0f;
-    public float maxCompress = 0.25f;
-    public float flowSpeed = 0.5f;
+    [SerializeField] float maxFlow = 4.0f;
+    [SerializeField] float minFlow = 0.005f;
+    [SerializeField] float minDensity = 0.005f;
+    [SerializeField] float maxDensity = 1.0f;
+    [SerializeField] float maxCompress = 0.25f;
+    [SerializeField] float flowSpeed = 0.5f;
+    
+    Coroutine fluidUpdator;
+    Queue<Tuple<int, float>> fluidQueue = new Queue<Tuple<int, float>>();
 
     Dictionary<int2, TileChunk> chunks = new Dictionary<int2, TileChunk>();
     Queue<int2> sunLightPropagationQueue = new Queue<int2>();
@@ -105,7 +108,8 @@ public class TileManager : MonoBehaviour
 
     void Update()
     {
-        UpdateFluid();
+        if(fluidUpdator == null)
+            fluidUpdator = StartCoroutine(nameof(UpdateFluid));
         SunLightPropagation();
         TorchLightPropagation(ref torchRedLightPropagationQueue, ref torchRedLightRemovalQueue, LightType.R);
         TorchLightPropagation(ref torchGreenLightPropagationQueue, ref torchGreenLightRemovalQueue, LightType.G);
@@ -121,7 +125,7 @@ public class TileManager : MonoBehaviour
         else if (Input.GetMouseButton(1))
         {
             SetTile(worldTilePosition, tileInformations[0].id);
-            waterDensities[TileUtil.To1DIndex(worldTilePosition, mapSize)] = 0.0f;
+            fluidQueue.Enqueue(new Tuple<int, float>(TileUtil.To1DIndex(worldTilePosition, mapSize), 0.0f));
         }
         else if (Input.GetKeyDown(KeyCode.T))
         {
@@ -130,7 +134,7 @@ public class TileManager : MonoBehaviour
         else if (Input.GetKeyDown(KeyCode.W))
         {
             SetTile(worldTilePosition, tileInformations[3].id);
-            waterDensities[TileUtil.To1DIndex(worldTilePosition, mapSize)] += 1.0f;
+            fluidQueue.Enqueue(new Tuple<int, float>(TileUtil.To1DIndex(worldTilePosition, mapSize), waterDensities[TileUtil.To1DIndex(worldTilePosition, mapSize)] + 1.0f));
         }
     }
 
@@ -312,8 +316,15 @@ public class TileManager : MonoBehaviour
         }
     }
 
-    void UpdateFluid()
+    IEnumerator UpdateFluid()
     {
+        while (fluidQueue.Count != 0)
+        {
+            (int index, float density) = fluidQueue.Dequeue();
+
+            waterDensities[index] = density;
+        }
+        
         NativeArray<int> nativeTiles = new NativeArray<int>(tiles, Allocator.TempJob);
         NativeArray<float> nativeWaterDensities = new NativeArray<float>(waterDensities, Allocator.TempJob);
         NativeArray<float> nativeWaterDiff = new NativeArray<float>(tiles.Length, Allocator.TempJob, NativeArrayOptions.ClearMemory);
@@ -341,6 +352,7 @@ public class TileManager : MonoBehaviour
         };
 
         fluidJob.Schedule(tiles.Length, 32).Complete();
+        yield return null;
         
         ApplyFluidJob applyFluidJob = new ApplyFluidJob
         {
@@ -351,6 +363,7 @@ public class TileManager : MonoBehaviour
         applyFluidJob.Schedule(waterDensities.Length, 32).Complete();
         
         nativeWaterDensities.CopyTo(waterDensities);
+        yield return null;
 
         FilterRemoveFluidJob filterRemoveFluidJob = new FilterRemoveFluidJob
         {
@@ -361,6 +374,7 @@ public class TileManager : MonoBehaviour
         };
 
         filterRemoveFluidJob.ScheduleAppend(nativeIndices, tiles.Length, 32).Complete();
+        yield return null;
 
         foreach (int fluidIndex in nativeIndices)
         {
@@ -389,6 +403,7 @@ public class TileManager : MonoBehaviour
         nativeWaterDiff.Dispose();
         nativeIsSolid.Dispose();
         nativeIndices.Dispose();
+        fluidUpdator = null;
     }
 
     void UpdateChunks()
@@ -695,7 +710,7 @@ public class TileManager : MonoBehaviour
         }
         
         if (tileInformations[id].isSolid)
-            waterDensities[index] = 0.0f;
+            fluidQueue.Enqueue(new Tuple<int, float>(index, 0.0f));
 
         LightEmission beforeEmission = tileInformations[tiles[index]].emission;
         tiles[index] = id;
