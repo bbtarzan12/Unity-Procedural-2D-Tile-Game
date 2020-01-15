@@ -223,7 +223,7 @@ public class TileManager : MonoBehaviour
             int rightIndex = TileUtil.To1DIndex(rightPosition, mapSize);
             if (TileUtil.BoundaryCheck(rightIndex, mapSize) && !isSolid[tiles[rightIndex]])
             {
-                float flow = (remainingDensity - waterDensities[rightIndex]) / 4.0f;
+                float flow = (remainingDensity - waterDensities[rightIndex]) / 3.0f;
                 if (flow > minFlow)
                     flow *= flowSpeed;
 
@@ -321,8 +321,9 @@ public class TileManager : MonoBehaviour
         while (fluidQueue.Count != 0)
         {
             (int index, float density) = fluidQueue.Dequeue();
-
-            waterDensities[index] = density;
+            
+            if(TileUtil.BoundaryCheck(index, mapSize))
+                waterDensities[index] = density;
         }
         
         NativeArray<int> nativeTiles = new NativeArray<int>(tiles, Allocator.TempJob);
