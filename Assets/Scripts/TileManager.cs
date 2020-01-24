@@ -45,6 +45,13 @@ public class TileManager : MonoBehaviour
     Queue<Tuple<int2, int>> torchRedLightRemovalQueue = new Queue<Tuple<int2, int>>();
     Queue<Tuple<int2, int>> torchGreenLightRemovalQueue = new Queue<Tuple<int2, int>>();
     Queue<Tuple<int2, int>> torchBlueLightRemovalQueue = new Queue<Tuple<int2, int>>();
+
+    NativeArray<int> nativeTiles;
+    NativeArray<float> nativeWaterDensities;
+    NativeArray<float> nativeWaterDiff;
+    NativeArray<bool> nativeIsSolid;
+    NativeList<int> nativeIndices;
+    
     
     public int[] Tiles => tiles;
     public float[] WaterDensities => waterDensities;
@@ -71,6 +78,20 @@ public class TileManager : MonoBehaviour
     {
         GenerateTerrain();
         BuildSunLight();
+    }
+
+    void OnDestroy()
+    {
+        if(nativeTiles.IsCreated)
+            nativeTiles.Dispose();
+        if(nativeWaterDensities.IsCreated)
+            nativeWaterDensities.Dispose();
+        if(nativeWaterDiff.IsCreated)
+            nativeWaterDiff.Dispose();
+        if(nativeIsSolid.IsCreated)
+            nativeIsSolid.Dispose();
+        if(nativeIndices.IsCreated)
+            nativeIndices.Dispose();
     }
 
     void GenerateTerrain()
@@ -326,11 +347,11 @@ public class TileManager : MonoBehaviour
                 waterDensities[index] = density;
         }
         
-        NativeArray<int> nativeTiles = new NativeArray<int>(tiles, Allocator.TempJob);
-        NativeArray<float> nativeWaterDensities = new NativeArray<float>(waterDensities, Allocator.TempJob);
-        NativeArray<float> nativeWaterDiff = new NativeArray<float>(tiles.Length, Allocator.TempJob, NativeArrayOptions.ClearMemory);
-        NativeArray<bool> nativeIsSolid = new NativeArray<bool>(tileInformations.Length, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-        NativeList<int> nativeIndices = new NativeList<int>(Allocator.TempJob);
+        nativeTiles = new NativeArray<int>(tiles, Allocator.TempJob);
+        nativeWaterDensities = new NativeArray<float>(waterDensities, Allocator.TempJob);
+        nativeWaterDiff = new NativeArray<float>(tiles.Length, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+        nativeIsSolid = new NativeArray<bool>(tileInformations.Length, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+        nativeIndices = new NativeList<int>(Allocator.TempJob);
 
         for (int i = 0; i < nativeIsSolid.Length; i++)
         {
