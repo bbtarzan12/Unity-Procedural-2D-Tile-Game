@@ -148,6 +148,10 @@ public class TileManager : MonoBehaviour
 
         Vector3 mousePosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         int2 worldTilePosition = TileUtil.WorldToWorldtile(mousePosition);
+
+        if (!TileUtil.BoundaryCheck(worldTilePosition, mapSize))
+            return;
+        
         if (Input.GetMouseButton(0))
         {
             SetTile(worldTilePosition, tileInformations[1].id);

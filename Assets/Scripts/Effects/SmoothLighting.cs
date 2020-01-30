@@ -17,7 +17,7 @@ public class SmoothLighting : MonoBehaviour
         lightCamera = GetComponent<Camera>();
     }
     
-    void Update()
+    void LateUpdate()
     {
         Vector3 position = mainCamera.transform.position;
         
