@@ -19,11 +19,11 @@ public class CameraController : MonoBehaviour
     {
         float scroll = Input.GetAxisRaw("Mouse ScrollWheel");
 
-        if (scroll > 0)
+        if (scroll < 0)
         {
             camera.orthographicSize += 1.0f * scrollSpeed;
         }
-        else if (scroll < 0)
+        else if (scroll > 0)
         {
             camera.orthographicSize -= 1.0f * scrollSpeed;
         }

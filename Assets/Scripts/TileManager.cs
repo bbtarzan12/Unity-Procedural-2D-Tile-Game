@@ -10,6 +10,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using LightType = OptIn.Tile.LightType;
+using Random = UnityEngine.Random;
 
 public class TileManager : MonoBehaviour
 {
@@ -62,11 +63,14 @@ public class TileManager : MonoBehaviour
     {
         new Tile{id = 0}, 
         new Tile{id = 1, color = new Color32(139, 192, 157, 255), attenuation = 50, isSolid = true},
-        new Tile{id = 2, color = new Color32(255, 242, 161, 255), isSolid = true, emission = new LightEmission{r = TileLight.MaxTorchLight, g = TileLight.MaxTorchLight, b = 0}},
-        new Tile{id = 3, color = new Color32(72, 85, 255, 255), attenuation = 10}
+        new Tile{id = 2, color = new Color32(72, 85, 255, 255), attenuation = 10},
+        new Tile{id = 3, color = new Color32(255, 242, 161, 255), isSolid = true, emission = new LightEmission{r = TileLight.MaxTorchLight, g = TileLight.MaxTorchLight, b = 0}},
+        new Tile{id = 4, color = new Color32(154, 255, 165, 255), isSolid = true, emission = new LightEmission{r = 0, g = TileLight.MaxTorchLight, b = 0}},
+        new Tile{id = 5, color = new Color32(124, 153, 255, 255), isSolid = true, emission = new LightEmission{r = 0, g = 0, b = TileLight.MaxTorchLight}},
+        new Tile{id = 6, color = new Color32(255, 141, 248, 255), isSolid = true, emission = new LightEmission{r = TileLight.MaxTorchLight, g = 0, b = TileLight.MaxTorchLight}},
     };
 
-    const int waterID = 3;
+    const int waterID = 2;
     
     void Awake()
     {
@@ -117,8 +121,17 @@ public class TileManager : MonoBehaviour
                 {
                     if(noise <= 0.3)
                         continue;
-                    
-                    SetTile(new int2(x, y), tileInformations[1].id);
+
+                    float randomLight = Noise.CalcPixel2D(x, y, 0.03f);
+                    if (randomLight >= 0.91f)
+                    {
+                        float randomType = Noise.CalcPixel2D(x, y, 0.01f);
+                        SetTile(new int2(x, y), tileInformations[(int)TileUtil.MinMaxNormalization(randomType, 0, 1, 3, 6)].id);
+                    }
+                    else
+                    {
+                        SetTile(new int2(x, y), tileInformations[1].id);
+                    }
                 }
             }
         }
@@ -163,11 +176,11 @@ public class TileManager : MonoBehaviour
         }
         else if (Input.GetKeyDown(KeyCode.T))
         {
-            SetTile(worldTilePosition, tileInformations[2].id);
+            SetTile(worldTilePosition, tileInformations[3].id);
         }
         else if (Input.GetKey(KeyCode.W))
         {
-            SetTile(worldTilePosition, tileInformations[3].id);
+            SetTile(worldTilePosition, tileInformations[2].id);
             fluidQueue.Enqueue(new Tuple<int, float>(TileUtil.To1DIndex(worldTilePosition, mapSize), waterDensities[TileUtil.To1DIndex(worldTilePosition, mapSize)] + 3.0f));
         }
     }

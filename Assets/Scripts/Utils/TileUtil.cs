@@ -72,6 +72,11 @@ namespace OptIn.Util
             return BoundaryCheck(WorldTileToTile(worldTilePosition, chunkPosition, size), size);
         }
 
+        public static float MinMaxNormalization(float value, float min, float max, float newMin, float newMax)
+        {
+            return (value - min) / (max - min) * (newMax - newMin) + newMin;
+        }
+
         public static readonly int2[] Direction4 =
         {
             new int2(0, -1),
