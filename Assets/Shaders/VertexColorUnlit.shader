@@ -18,11 +18,13 @@ Shader "Custom/VertexColorUnlit"
             struct appdata_t {
                 float4 vertex : POSITION;
                 float4 color : COLOR;
+                float4 uv : TEXCOORD0;
             };
  
             struct v2f {
                 float4 vertex : SV_POSITION;
                 float4 color : COLOR;
+                float4 uv : TEXCOORD0;
             };
            
             v2f vert (appdata_t v)
@@ -30,11 +32,13 @@ Shader "Custom/VertexColorUnlit"
                 v2f o;
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.color = v.color;
+                o.uv = v.uv;
                 return o;
             }
            
             fixed4 frag (v2f i) : COLOR
             {
+                i.color.a = step(i.uv.y / i.uv.w, i.color.a);
                 return i.color;
             }
             

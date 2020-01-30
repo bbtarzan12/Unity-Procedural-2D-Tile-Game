@@ -110,6 +110,9 @@ namespace OptIn.Tile
 
                         if (nextTile != tile)
                             break;
+
+                        if (!TileManager.tileInformations[tile].isSolid)
+                            break;
                         
                         if (visited.Contains(nextPosition))
                             break;
@@ -140,6 +143,12 @@ namespace OptIn.Tile
                                 done = true;
                                 break;
                             }
+
+                            if (!TileManager.tileInformations[tile].isSolid)
+                            {
+                                done = true;
+                                break;
+                            }
                         }
 
                         if (done)
@@ -165,15 +174,27 @@ namespace OptIn.Tile
                         Vector2 vertex = tileVertices[i] * scale + tilePosition;
                         vertices.Add(vertex);
 
-                        Vector2 uv = tileVertices[i] * scale;
-                        uvs.Add(uv);
+                        Vector2 uv2 = tileVertices[i] * scale;
+                        Vector4 uv4 = new Vector4(uv2.x, uv2.y, scale.x, scale.y);
+                        uvs.Add(uv4);
 
                         Color32 color = TileManager.tileInformations[tile].color;
                         if(TileManager.tileInformations[tile].isSolid)
                             colors.Add(color);
                         else
                         {
-                            float density = Mathf.Clamp(waterDensities[index], 0.3f, 1.0f);
+                            float density = Mathf.Clamp(waterDensities[index], 0.0f, 1.0f);
+
+                            int2 upPosition = tilePosition + TileUtil.Up;
+                            if (TileUtil.BoundaryCheck(upPosition, mapSize))
+                            {
+                                int upTile = tiles[TileUtil.To1DIndex(upPosition, mapSize)];
+                                if (!TileManager.tileInformations[upTile].isSolid && upTile != 0 && waterDensities[TileUtil.To1DIndex(upPosition, mapSize)] >= 0.01f)
+                                {
+                                    density = 1.0f;
+                                }   
+                            }
+
                             color.a = (byte) (byte.MaxValue * density);
                             colors.Add(color);
                         }   

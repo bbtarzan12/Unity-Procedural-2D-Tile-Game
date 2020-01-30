@@ -31,6 +31,7 @@ public class TileManager : MonoBehaviour
     [SerializeField] float maxCompress = 0.25f;
     [SerializeField] float flowSpeed = 0.5f;
     
+    float currentFlowSpeed;
     Coroutine fluidUpdator;
     Queue<Tuple<int, float>> fluidQueue = new Queue<Tuple<int, float>>();
 
@@ -72,6 +73,12 @@ public class TileManager : MonoBehaviour
         tiles = new int[mapSize.x * mapSize.y];
         lights = new TileLight[mapSize.x * mapSize.y];
         waterDensities = new float[mapSize.x * mapSize.y];
+        
+        nativeTiles = new NativeArray<int>(tiles.Length, Allocator.Persistent);
+        nativeWaterDensities = new NativeArray<float>(waterDensities.Length, Allocator.Persistent);
+        nativeWaterDiff = new NativeArray<float>(tiles.Length, Allocator.Persistent);
+        nativeIsSolid = new NativeArray<bool>(tileInformations.Length, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        nativeIndices = new NativeList<int>(Allocator.Persistent);
     }
     
     void Start()
@@ -129,6 +136,8 @@ public class TileManager : MonoBehaviour
 
     void Update()
     {
+        currentFlowSpeed = Mathf.Clamp01(flowSpeed * Time.deltaTime);
+        
         if(fluidUpdator == null)
             fluidUpdator = StartCoroutine(nameof(UpdateFluid));
         SunLightPropagation();
@@ -152,13 +161,24 @@ public class TileManager : MonoBehaviour
         {
             SetTile(worldTilePosition, tileInformations[2].id);
         }
-        else if (Input.GetKeyDown(KeyCode.W))
+        else if (Input.GetKey(KeyCode.W))
         {
             SetTile(worldTilePosition, tileInformations[3].id);
-            fluidQueue.Enqueue(new Tuple<int, float>(TileUtil.To1DIndex(worldTilePosition, mapSize), waterDensities[TileUtil.To1DIndex(worldTilePosition, mapSize)] + 1.0f));
+            fluidQueue.Enqueue(new Tuple<int, float>(TileUtil.To1DIndex(worldTilePosition, mapSize), waterDensities[TileUtil.To1DIndex(worldTilePosition, mapSize)] + 3.0f));
         }
     }
 
+    [BurstCompile]
+    struct InitFluidJob : IJobParallelFor
+    {
+        [WriteOnly] public NativeArray<float> waterDiff;
+        
+        public void Execute(int index)
+        {
+            waterDiff[index] = 0.0f;
+        }
+    }
+    
     [BurstCompile]
     struct CalculateFluidJob : IJobParallelFor
     {
@@ -347,16 +367,22 @@ public class TileManager : MonoBehaviour
                 waterDensities[index] = density;
         }
         
-        nativeTiles = new NativeArray<int>(tiles, Allocator.TempJob);
-        nativeWaterDensities = new NativeArray<float>(waterDensities, Allocator.TempJob);
-        nativeWaterDiff = new NativeArray<float>(tiles.Length, Allocator.TempJob, NativeArrayOptions.ClearMemory);
-        nativeIsSolid = new NativeArray<bool>(tileInformations.Length, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-        nativeIndices = new NativeList<int>(Allocator.TempJob);
+        nativeIndices.Clear();
+        nativeTiles.CopyFrom(tiles);
+        nativeWaterDensities.CopyFrom(waterDensities);
 
         for (int i = 0; i < nativeIsSolid.Length; i++)
         {
             nativeIsSolid[i] = tileInformations[i].isSolid;
         }
+        
+        InitFluidJob initJob = new InitFluidJob
+        {
+            waterDiff = nativeWaterDiff
+        };
+        
+        initJob.Schedule(nativeWaterDiff.Length, 32).Complete();
+        yield return null;
         
         CalculateFluidJob fluidJob = new CalculateFluidJob
         {
@@ -366,7 +392,7 @@ public class TileManager : MonoBehaviour
             minDensity = minDensity,
             maxDensity = maxDensity,
             maxCompress = maxCompress,
-            flowSpeed = flowSpeed,
+            flowSpeed = currentFlowSpeed,
             tiles = nativeTiles,
             waterDensities = nativeWaterDensities,
             waterDiff = nativeWaterDiff,
@@ -414,17 +440,13 @@ public class TileManager : MonoBehaviour
         };
         
         filterCreateFluidJob.ScheduleAppend(nativeIndices, tiles.Length, 32).Complete();
-
+        yield return null;
+        
         foreach (int fluidIndex in nativeIndices)
         {
             SetTile(TileUtil.To2DIndex(fluidIndex, mapSize), waterID);
         }
         
-        nativeTiles.Dispose();
-        nativeWaterDensities.Dispose();
-        nativeWaterDiff.Dispose();
-        nativeIsSolid.Dispose();
-        nativeIndices.Dispose();
         fluidUpdator = null;
     }
 
