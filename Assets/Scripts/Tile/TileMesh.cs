@@ -189,10 +189,20 @@ namespace OptIn.Tile
                             if (TileUtil.BoundaryCheck(upPosition, mapSize))
                             {
                                 int upTile = tiles[TileUtil.To1DIndex(upPosition, mapSize)];
-                                if (!TileManager.tileInformations[upTile].isSolid && upTile != 0 && waterDensities[TileUtil.To1DIndex(upPosition, mapSize)] >= 0.01f)
+                                if (!TileManager.tileInformations[upTile].isSolid && upTile != 0)
                                 {
                                     density = 1.0f;
                                 }   
+                            }
+                            
+                            int2 downPosition = tilePosition + TileUtil.Down;
+                            if (TileUtil.BoundaryCheck(downPosition, mapSize))
+                            {
+                                int downTile = tiles[TileUtil.To1DIndex(downPosition, mapSize)];
+                                if (!TileManager.tileInformations[downTile].isSolid && downTile == 0)
+                                {
+                                    density = 1.0f;
+                                }
                             }
 
                             color.a = (byte) (byte.MaxValue * density);

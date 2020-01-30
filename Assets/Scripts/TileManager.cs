@@ -8,6 +8,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using UnityEditor;
 using UnityEngine;
 using LightType = OptIn.Tile.LightType;
 using Random = UnityEngine.Random;
@@ -31,7 +32,8 @@ public class TileManager : MonoBehaviour
     [SerializeField] float maxDensity = 1.0f;
     [SerializeField] float maxCompress = 0.25f;
     [SerializeField] float flowSpeed = 0.5f;
-    
+
+    int2 numChunks;
     float currentFlowSpeed;
     Coroutine fluidUpdator;
     Queue<Tuple<int, float>> fluidQueue = new Queue<Tuple<int, float>>();
@@ -53,6 +55,7 @@ public class TileManager : MonoBehaviour
     NativeArray<float> nativeWaterDiff;
     NativeArray<bool> nativeIsSolid;
     NativeList<int> nativeIndices;
+    NativeArray<bool> nativeWaterChunkDirty;
     
     
     public int[] Tiles => tiles;
@@ -74,6 +77,8 @@ public class TileManager : MonoBehaviour
     
     void Awake()
     {
+        numChunks = mapSize / chunkSize;
+        
         tiles = new int[mapSize.x * mapSize.y];
         lights = new TileLight[mapSize.x * mapSize.y];
         waterDensities = new float[mapSize.x * mapSize.y];
@@ -83,6 +88,7 @@ public class TileManager : MonoBehaviour
         nativeWaterDiff = new NativeArray<float>(tiles.Length, Allocator.Persistent);
         nativeIsSolid = new NativeArray<bool>(tileInformations.Length, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         nativeIndices = new NativeList<int>(Allocator.Persistent);
+        nativeWaterChunkDirty = new NativeArray<bool>(numChunks.x * numChunks.y, Allocator.Persistent);
     }
     
     void Start()
@@ -103,6 +109,8 @@ public class TileManager : MonoBehaviour
             nativeIsSolid.Dispose();
         if(nativeIndices.IsCreated)
             nativeIndices.Dispose();
+        if (nativeWaterChunkDirty.IsCreated)
+            nativeWaterChunkDirty.Dispose();
     }
 
     void GenerateTerrain()
@@ -178,7 +186,7 @@ public class TileManager : MonoBehaviour
         {
             SetTile(worldTilePosition, tileInformations[3].id);
         }
-        else if (Input.GetKey(KeyCode.W))
+        else if (Input.GetKeyDown(KeyCode.W))
         {
             SetTile(worldTilePosition, tileInformations[2].id);
             fluidQueue.Enqueue(new Tuple<int, float>(TileUtil.To1DIndex(worldTilePosition, mapSize), waterDensities[TileUtil.To1DIndex(worldTilePosition, mapSize)] + 3.0f));
@@ -186,7 +194,7 @@ public class TileManager : MonoBehaviour
     }
 
     [BurstCompile]
-    struct InitFluidJob : IJobParallelFor
+    struct InitDiffJob : IJobParallelFor
     {
         [WriteOnly] public NativeArray<float> waterDiff;
         
@@ -197,9 +205,22 @@ public class TileManager : MonoBehaviour
     }
     
     [BurstCompile]
+    struct InitDirtyJob : IJobParallelFor
+    {
+        [WriteOnly] public NativeArray<bool> waterChunkDirty;
+
+        public void Execute(int index)
+        {
+            waterChunkDirty[index] = false;
+        }
+    }
+    
+    [BurstCompile]
     struct CalculateFluidJob : IJobParallelFor
     {
         [ReadOnly] public int2 mapSize;
+        [ReadOnly] public int2 chunkSize;
+        [ReadOnly] public int2 numChunks;
         [ReadOnly] public NativeArray<int> tiles;
         
         [ReadOnly] public float maxFlow;
@@ -212,6 +233,7 @@ public class TileManager : MonoBehaviour
         [NativeDisableParallelForRestriction] public NativeArray<float> waterDensities;
         [NativeDisableParallelForRestriction] public NativeArray<float> waterDiff;
         [NativeDisableParallelForRestriction] public NativeArray<bool> isSolid;
+        public NativeArray<bool> waterChunkDirty;
 
 
         public void Execute(int tileIndex)
@@ -236,6 +258,8 @@ public class TileManager : MonoBehaviour
 
             if (remainingDensity <= 0)
                 return;
+
+            waterChunkDirty[TileUtil.To1DIndex(TileUtil.WorldTileToChunk(tilePosition, chunkSize), numChunks)] = true;
 
             int2 downPosition = tilePosition + TileUtil.Down;
             int downIndex = TileUtil.To1DIndex(downPosition, mapSize);
@@ -331,12 +355,17 @@ public class TileManager : MonoBehaviour
     [BurstCompile]
     struct ApplyFluidJob : IJobParallelFor
     {
+        [ReadOnly] public float minDensity;
+        
         public NativeArray<float> waterDensities;
         public NativeArray<float> waterDiff;
         
         public void Execute(int index)
         {
             waterDensities[index] += waterDiff[index];
+
+            if (waterDensities[index] < minDensity)
+                waterDensities[index] = 0;
         }
     }
 
@@ -393,17 +422,26 @@ public class TileManager : MonoBehaviour
             nativeIsSolid[i] = tileInformations[i].isSolid;
         }
         
-        InitFluidJob initJob = new InitFluidJob
+        InitDiffJob initJob = new InitDiffJob
         {
             waterDiff = nativeWaterDiff
         };
         
         initJob.Schedule(nativeWaterDiff.Length, 32).Complete();
+        
+        InitDirtyJob dirtyJob = new InitDirtyJob
+        {
+            waterChunkDirty = nativeWaterChunkDirty
+        };
+        
+        dirtyJob.Schedule(nativeWaterChunkDirty.Length, 32).Complete();
         yield return null;
         
         CalculateFluidJob fluidJob = new CalculateFluidJob
         {
             mapSize = mapSize,
+            chunkSize = chunkSize,
+            numChunks = numChunks,
             maxFlow = maxFlow,
             minFlow = minFlow,
             minDensity = minDensity,
@@ -413,14 +451,28 @@ public class TileManager : MonoBehaviour
             tiles = nativeTiles,
             waterDensities = nativeWaterDensities,
             waterDiff = nativeWaterDiff,
-            isSolid = nativeIsSolid
+            isSolid = nativeIsSolid,
+            waterChunkDirty = nativeWaterChunkDirty
         };
 
         fluidJob.Schedule(tiles.Length, 32).Complete();
+
+        for (int i = 0; i < nativeWaterChunkDirty.Length; i++)
+        {
+            if(!nativeWaterChunkDirty[i])
+                continue;
+
+            if (chunks.TryGetValue(TileUtil.To2DIndex(i, numChunks), out TileChunk chunk))
+            {
+                chunk.SetMeshDirty();
+            }
+        }
+
         yield return null;
         
         ApplyFluidJob applyFluidJob = new ApplyFluidJob
         {
+            minDensity = minDensity,
             waterDensities = nativeWaterDensities,
             waterDiff = nativeWaterDiff
         };
@@ -804,5 +856,22 @@ public class TileManager : MonoBehaviour
         chunks.Add(chunkPosition, newChunk);
         
         return newChunk;
+    }
+
+    void OnDrawGizmos()
+    {
+        Vector3 mousePosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+
+        int2 worldtilePosition = TileUtil.WorldToWorldtile(mousePosition);
+        if (!TileUtil.BoundaryCheck(worldtilePosition, mapSize))
+            return;
+
+        int tileIndex = TileUtil.To1DIndex(worldtilePosition, mapSize);
+        int tile = tiles[tileIndex];
+
+        if (tileInformations[tile].isSolid)
+            return;
+        
+        Handles.Label(mousePosition, waterDensities[tileIndex].ToString());
     }
 }

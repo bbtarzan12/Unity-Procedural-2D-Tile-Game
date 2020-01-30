@@ -456,8 +456,8 @@ MonoBehaviour:
   tileMaterial: {fileID: 2100000, guid: 64aa39ab1bbb8604bb1635b4dbb2a237, type: 2}
   lightMaterial: {fileID: 2100000, guid: 1ad03c22919d8184695d7085300fb787, type: 2}
   maxFlow: 4
-  minFlow: 0.0001
-  minDensity: 0.0005
+  minFlow: 0.001
+  minDensity: 0.005
   maxDensity: 1
   maxCompress: 0.25
   flowSpeed: 50
