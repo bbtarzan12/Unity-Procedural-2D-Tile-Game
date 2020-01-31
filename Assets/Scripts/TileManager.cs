@@ -186,7 +186,7 @@ public class TileManager : MonoBehaviour
         {
             SetTile(worldTilePosition, tileInformations[3].id);
         }
-        else if (Input.GetKeyDown(KeyCode.W))
+        else if (Input.GetKey(KeyCode.W))
         {
             SetTile(worldTilePosition, tileInformations[2].id);
             fluidQueue.Enqueue(new Tuple<int, float>(TileUtil.To1DIndex(worldTilePosition, mapSize), waterDensities[TileUtil.To1DIndex(worldTilePosition, mapSize)] + 3.0f));
@@ -456,18 +456,6 @@ public class TileManager : MonoBehaviour
         };
 
         fluidJob.Schedule(tiles.Length, 32).Complete();
-
-        for (int i = 0; i < nativeWaterChunkDirty.Length; i++)
-        {
-            if(!nativeWaterChunkDirty[i])
-                continue;
-
-            if (chunks.TryGetValue(TileUtil.To2DIndex(i, numChunks), out TileChunk chunk))
-            {
-                chunk.SetMeshDirty();
-            }
-        }
-
         yield return null;
         
         ApplyFluidJob applyFluidJob = new ApplyFluidJob
@@ -514,6 +502,17 @@ public class TileManager : MonoBehaviour
         foreach (int fluidIndex in nativeIndices)
         {
             SetTile(TileUtil.To2DIndex(fluidIndex, mapSize), waterID);
+        }
+        
+        for (int i = 0; i < nativeWaterChunkDirty.Length; i++)
+        {
+            if(!nativeWaterChunkDirty[i])
+                continue;
+
+            if (chunks.TryGetValue(TileUtil.To2DIndex(i, numChunks), out TileChunk chunk))
+            {
+                chunk.SetMeshDirty();
+            }
         }
         
         fluidUpdator = null;
@@ -860,6 +859,9 @@ public class TileManager : MonoBehaviour
 
     void OnDrawGizmos()
     {
+        if (tiles == null)
+            return;
+        
         Vector3 mousePosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
 
         int2 worldtilePosition = TileUtil.WorldToWorldtile(mousePosition);
